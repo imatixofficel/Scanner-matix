@@ -13,14 +13,14 @@
      GitHub Pages alone cannot perform real TCP/ICMP pings — this project
      never fabricates that data. See README.md for the expected contract.
      ------------------------------------------------------------------- */
-  var SCAN_API_URL = 'https://scanner.imatixofficel.workers.dev/';
+  var SCAN_API_URL = 'https://scanner.imatixofficel.workers.dev/scan';
 
   /* Optional: URL of the /ranges endpoint from the companion worker.js
      (see that file for one-click deploy instructions). If set, this is used
      instead of fetching www.cloudflare.com/ips-v4 directly from the browser,
      which avoids CORS issues entirely. Example:
        'https://matix-worker.YOURNAME.workers.dev/ranges' */
-  var RANGES_API_URL = 'https://scanner.imatixofficel.workers.dev/';
+  var RANGES_API_URL = 'https://scanner.imatixofficel.workers.dev/renges';
 
   var CLOUDFLARE_IPV4_SOURCE = 'https://www.cloudflare.com/ips-v4';
 
