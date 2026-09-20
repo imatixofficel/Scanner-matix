@@ -7,8 +7,7 @@
 ---
 
 ## 🌐 دموی آنلاین
-
-فارسی :{https://imatixofficel.github.io/Scanner-matix/}
+فارسی : [https://imatixofficel.github.io/Scanner-matix/]
 - English: [README.md](README.md)
 
 ---
