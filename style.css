@@ -19,6 +19,8 @@
   --success-soft:#E8F6EE;
   --danger:#D93025;
   --danger-soft:#FCEBE9;
+  --persistent:#FFD700;
+  --persistent-soft:rgba(255, 215, 0, 0.08);
   --radius-sm:7px;
   --radius-md:11px;
   --radius-lg:18px;
@@ -419,7 +421,7 @@ button, select, textarea, input{ font-family:inherit; }
   display:block;
   height:100%;
   width:0%;
-  background:var(--accent);
+  background:linear-gradient(90deg, var(--accent), var(--accent-bright));
   border-radius:6px;
   transition:width .25s ease;
 }
@@ -500,6 +502,20 @@ button, select, textarea, input{ font-family:inherit; }
   to{ opacity:1; transform:translateY(0); }
 }
 .results-table tbody tr.is-best{ background:var(--accent-soft); }
+
+/* 💎 Persistent IPs — golden highlight */
+.results-table tbody tr.is-persistent {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.08), transparent);
+  border-right: 3px solid #FFD700;
+}
+.results-table tbody tr.is-persistent.is-best {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(124, 58, 237, 0.08));
+}
+.results-table tbody tr.is-persistent td:first-child::before {
+  content: '💎 ';
+  font-size: 12px;
+}
+
 .ip-cell{ font-variant-numeric:tabular-nums; direction:ltr; text-align:right; }
 .ping-cell{ font-variant-numeric:tabular-nums; direction:ltr; text-align:right; font-weight:700; }
 .status-pill{
@@ -566,8 +582,6 @@ button, select, textarea, input{ font-family:inherit; }
 }
 
 .builder-actions{ margin-bottom:22px; }
-
-.combined-wrap{}
 
 /* ==========================================================================
    Footer / toast
