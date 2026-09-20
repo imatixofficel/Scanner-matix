@@ -101,10 +101,8 @@ IPهای ماندگار معمولاً پایدارتر و قابل‌اعتما
 ساخته‌شده با
 
 · 🐍 Python 3.11 — اسکنر
-· 💻 Vanilla JavaScript — سایت
-· ⚙️ GitHub Actions — اتوماسیون
-· 🌐 GitHub Pages — هاست
-· 🔤 Vazirmatn + Manrope — فونت‌ها
+
+اتوماسیونفونت‌ها
 
 ---
 
