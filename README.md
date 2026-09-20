@@ -8,7 +8,7 @@ A lightweight, no-build web tool for finding clean Cloudflare IPs and generating
 
 ## 🌐 Live Demo
 
-- English: [https://imatixoffice.github.io/Scanner-matix/][(https://imatixoffice.github.io/Scanner-matix/](https://imatixofficel.github.io/Scanner-matix/))
+- English: [(https://imatixoffice.github.io/Scanner-matix/](https://imatixofficel.github.io/Scanner-matix/)}
 - فارسی: [README.fa.md](README.fa.md)
 
 ---
