@@ -1,32 +1,11 @@
 /* =========================================================================
    Matix — app.js
-   Vanilla JS, no build step, no framework, no dependencies.
    ========================================================================= */
 (function () {
   'use strict';
 
-  /* -----------------------------------------------------------------------
-     CONFIG
-     Set SCAN_API_URL to a real backend / Cloudflare Worker endpoint that
-     performs actual latency measurement against a list of IPs and returns
-     JSON: { "results": [ { "ip": "1.2.3.4", "ms": 42, "status": "online" } ] }
-     GitHub Pages alone cannot perform real TCP/ICMP pings — this project
-     never fabricates that data. See README.md for the expected contract.
-     ------------------------------------------------------------------- */
-  var SCAN_API_URL = 'https://scanner.imatixofficel.workers.dev/scan';
+  var RESULTS_JSON_URL = 'data/clean_ips.json';
 
-  /* Optional: URL of the /ranges endpoint from the companion worker.js
-     (see that file for one-click deploy instructions). If set, this is used
-     instead of fetching www.cloudflare.com/ips-v4 directly from the browser,
-     which avoids CORS issues entirely. Example:
-       'https://matix-worker.YOURNAME.workers.dev/ranges' */
-  var RANGES_API_URL = 'https://scanner.imatixofficel.workers.dev/renges';
-
-  var CLOUDFLARE_IPV4_SOURCE = 'https://www.cloudflare.com/ips-v4';
-
-  /* -----------------------------------------------------------------------
-     Small helpers
-     ------------------------------------------------------------------- */
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
   function $all(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
 
@@ -37,9 +16,7 @@
     toastEl.textContent = message;
     toastEl.className = 'toast is-visible' + (kind ? ' is-' + kind : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      toastEl.className = 'toast';
-    }, 2600);
+    toastTimer = setTimeout(function () { toastEl.className = 'toast'; }, 2600);
   }
 
   function copyText(text) {
@@ -51,16 +28,13 @@
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
     document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try { document.execCommand('copy'); } catch (e) { /* noop */ }
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
     return Promise.resolve();
   }
 
-  /* -----------------------------------------------------------------------
-     Loading screen
-     ------------------------------------------------------------------- */
+  /* Loading screen */
   window.addEventListener('load', function () {
     setTimeout(function () {
       var screen = $('#loading-screen');
@@ -70,9 +44,7 @@
     }, 1300);
   });
 
-  /* -----------------------------------------------------------------------
-     Hamburger drawer
-     ------------------------------------------------------------------- */
+  /* Drawer */
   var hamburgerBtn = $('#hamburger-btn');
   var drawer = $('#drawer');
   var drawerOverlay = $('#drawer-overlay');
@@ -97,7 +69,6 @@
     if (e.key === 'Escape') closeDrawer();
   });
 
-  /* Page navigation */
   var drawerLinks = $all('.drawer-link');
   var pages = $all('.page');
   drawerLinks.forEach(function (link) {
@@ -126,8 +97,7 @@
   var copyBestBtn = $('#copy-best-btn');
   var copyAllBtn = $('#copy-all-btn');
 
-  var cachedRanges = null; // real Cloudflare IPv4 CIDR ranges, fetched once
-  var lastResults = [];    // last rendered scan results, sorted by ping
+  var lastResults = [];
 
   function setStatus(message, kind) {
     if (!message) {
@@ -145,99 +115,6 @@
     progressFill.style.width = Math.max(0, Math.min(100, percent)) + '%';
     if (label) progressLabel.textContent = label;
     progressCount.textContent = doneCount + ' / ' + totalCount;
-  }
-
-  /* --- IPv4 / CIDR helpers --- */
-  function ipToInt(ip) {
-    var parts = ip.split('.').map(Number);
-    return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
-  }
-  function intToIp(int) {
-    return [(int >>> 24) & 255, (int >>> 16) & 255, (int >>> 8) & 255, int & 255].join('.');
-  }
-  function randomIpFromCidr(cidr) {
-    var parts = cidr.split('/');
-    var base = ipToInt(parts[0]);
-    var prefix = parseInt(parts[1], 10);
-    var hostBits = 32 - prefix;
-    var size = Math.pow(2, hostBits);
-    var network = (base & (~(size - 1) >>> 0)) >>> 0;
-    if (size <= 2) return intToIp(network);
-    var offset = 1 + Math.floor(Math.random() * (size - 2));
-    return intToIp((network + offset) >>> 0);
-  }
-
-  /* Fetch the official Cloudflare IPv4 ranges. No fabricated ranges — if the
-     network request fails (offline, or blocked by CORS from a raw static
-     host), we surface that honestly instead of inventing a fallback list. */
-  function fetchCloudflareRanges() {
-    if (cachedRanges) return Promise.resolve(cachedRanges);
-
-    if (RANGES_API_URL) {
-      // Preferred path: a small backend (see worker.js) fetches the ranges
-      // server-side and returns them with permissive CORS headers.
-      return fetch(RANGES_API_URL, { cache: 'no-store' })
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return res.json();
-        })
-        .then(function (data) {
-          var ranges = (data && data.ranges) || [];
-          if (!ranges.length) throw new Error('empty range list from RANGES_API_URL');
-          cachedRanges = ranges;
-          return ranges;
-        });
-    }
-
-    // Fallback: try fetching Cloudflare's published list directly from the
-    // browser. This works in some environments and fails with a CORS error
-    // in others — either way, no fake ranges are ever substituted.
-    return fetch(CLOUDFLARE_IPV4_SOURCE, { cache: 'no-store' })
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.text();
-      })
-      .then(function (text) {
-        var ranges = text.split('\n').map(function (l) { return l.trim(); }).filter(function (l) {
-          return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/.test(l);
-        });
-        if (!ranges.length) throw new Error('empty range list');
-        cachedRanges = ranges;
-        return ranges;
-      });
-  }
-
-  function pickRandomIps(ranges, count) {
-    var picked = new Set();
-    var attempts = 0;
-    var maxAttempts = count * 20;
-    while (picked.size < count && attempts < maxAttempts) {
-      var cidr = ranges[Math.floor(Math.random() * ranges.length)];
-      picked.add(randomIpFromCidr(cidr));
-      attempts++;
-    }
-    return Array.from(picked);
-  }
-
-  /* Call the real measurement API. Never invent ping/status values locally. */
-  function measureViaApi(ips) {
-    return fetch(SCAN_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ips: ips })
-    }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    }).then(function (data) {
-      var list = Array.isArray(data) ? data : (data && data.results) || [];
-      return list.map(function (item) {
-        return {
-          ip: item.ip,
-          ms: typeof item.ms === 'number' ? item.ms : (typeof item.latency === 'number' ? item.latency : null),
-          status: item.status || (typeof item.ms === 'number' || typeof item.latency === 'number' ? 'online' : 'offline')
-        };
-      });
-    });
   }
 
   function renderResults(results) {
@@ -274,7 +151,7 @@
     });
 
     var onlineCount = lastResults.filter(function (r) { return r.status === 'online'; }).length;
-    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online — Best ' + bestCount + ' مشخص شده';
+    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online';
     resultsWrap.hidden = false;
   }
 
@@ -283,37 +160,38 @@
     startScanBtn.disabled = true;
     resultsWrap.hidden = true;
     setStatus(null);
-    setProgress(8, 'در حال دریافت محدوده IP رسمی Cloudflare...', 0, count);
+    setProgress(30, 'در حال دریافت نتایج اسکن از سرور...', 0, count);
 
-    fetchCloudflareRanges()
-      .then(function (ranges) {
-        setProgress(35, 'در حال انتخاب IPهای واقعی از محدوده رسمی...', 0, count);
-        var ips = pickRandomIps(ranges, count);
-
-        if (!SCAN_API_URL) {
-          // Honest, explicit refusal to fabricate ping/status data.
-          setProgress(100, 'تکمیل شد', count, count);
-          setTimeout(function () {
-            progressWrap.hidden = true;
-            setStatus('اسکنر واقعی هنوز به API متصل نشده است.', 'info');
-            startScanBtn.disabled = false;
-          }, 300);
-          return null;
+    fetch(RESULTS_JSON_URL + '?t=' + Date.now())
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data.results || !data.results.length) {
+          throw new Error('هنوز اسکنی انجام نشده. چند دقیقه دیگه امتحان کن.');
         }
 
-        setProgress(60, 'در حال اندازه‌گیری Latency واقعی از API...', 0, count);
-        return measureViaApi(ips).then(function (results) {
-          setProgress(100, 'تکمیل شد', results.length, count);
-          setTimeout(function () {
-            progressWrap.hidden = true;
-            renderResults(results);
-            startScanBtn.disabled = false;
-          }, 250);
-        });
+        setProgress(100, 'تکمیل شد', data.results.length, data.results.length);
+
+        var ageMin = Math.round((Date.now() / 1000) - data.updated) / 60;
+        ageMin = Math.round(ageMin);
+        setStatus(
+          'آخرین به‌روزرسانی: ' + ageMin + ' دقیقه پیش — ' +
+          data.online_count + ' IP آنلاین از ' + data.total_tested + ' تست‌شده',
+          'info'
+        );
+
+        var results = data.results.slice(0, count);
+        setTimeout(function () {
+          progressWrap.hidden = true;
+          renderResults(results);
+          startScanBtn.disabled = false;
+        }, 250);
       })
       .catch(function (err) {
         progressWrap.hidden = true;
-        setStatus('امکان دریافت لیست IP رسمی Cloudflare وجود نداشت (خطای شبکه یا CORS). داده جعلی نمایش داده نمی‌شود. برای رفع این مشکل، worker.js را طبق README دیپلوی کنید و RANGES_API_URL را در app.js تنظیم کنید. جزئیات فنی: ' + err.message, 'error');
+        setStatus('دریافت نتایج با خطا مواجه شد: ' + err.message, 'error');
         startScanBtn.disabled = false;
       });
   });
@@ -380,7 +258,7 @@
 
     var invalidConfigIndex = configs.findIndex(function (c) { return !VLESS_RE.test(c); });
     if (invalidConfigIndex !== -1) {
-      showToast('کانفیگ نامعتبر در خط ' + (invalidConfigIndex + 1) + ' (باید با vless:// شروع شود).', 'error');
+      showToast('کانفیگ نامعتبر در خط ' + (invalidConfigIndex + 1), 'error');
       return;
     }
 
