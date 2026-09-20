@@ -110,7 +110,10 @@
   }
 
   function renderResults(results) {
+    // مرتب‌سازی: بلندمدت‌ها اول، بعد ماندگارها، بعد بقیه
     lastResults = results.slice().sort(function (a, b) {
+      if (a.long_term && !b.long_term) return -1;
+      if (!a.long_term && b.long_term) return 1;
       if (a.persistent && !b.persistent) return -1;
       if (!a.persistent && b.persistent) return 1;
       var am = a.status === 'online' ? a.ms : Infinity;
@@ -124,19 +127,31 @@
     lastResults.forEach(function (r, i) {
       var tr = document.createElement('tr');
       tr.style.animationDelay = (i * 18) + 'ms';
+      
       if (i < bestCount && r.status === 'online') tr.classList.add('is-best');
       if (r.persistent) tr.classList.add('is-persistent');
+      if (r.long_term) tr.classList.add('is-long-term');
 
       var pingText = r.status === 'online' && typeof r.ms === 'number' ? r.ms + ' ms' : '—';
       var speedText = r.speed_mbps ? ' | ' + r.speed_mbps + ' Mbps' : '';
-      var persistentBadge = r.persistent ? ' 💎' : '';
+      
+      // آیکون‌ها
+      var badge = '';
+      if (r.long_term) badge = ' 💎💎';
+      else if (r.persistent) badge = ' 💎';
+      
+      // منبع IP
+      var sourceText = '';
+      if (r.source === 'fresh') sourceText = ' <span style="opacity:.5;font-size:10px">[NEW]</span>';
+      else if (r.source === 'old') sourceText = ' <span style="opacity:.5;font-size:10px">[OLD]</span>';
+      
       var statusClass = r.status === 'online' ? 'online' : 'offline';
       var statusText = r.status === 'online' ? 'Online' : 'Offline';
       var coloText = r.colo ? ' <span style="opacity:.6;font-size:11px">' + r.colo + '</span>' : '';
 
       tr.innerHTML =
         '<td>' + (i + 1) + '</td>' +
-        '<td class="ip-cell">' + r.ip + persistentBadge + '</td>' +
+        '<td class="ip-cell">' + r.ip + badge + sourceText + '</td>' +
         '<td class="ping-cell">' + pingText + speedText + '</td>' +
         '<td><span class="status-pill ' + statusClass + '">' + statusText + '</span>' + coloText + '</td>' +
         '<td><button class="copy-row-btn" type="button">Copy</button></td>';
@@ -150,7 +165,14 @@
 
     var onlineCount = lastResults.filter(function (r) { return r.status === 'online'; }).length;
     var persistentCount = lastResults.filter(function (r) { return r.persistent; }).length;
-    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online — ' + persistentCount + ' ماندگار 💎';
+    var longTermCount = lastResults.filter(function (r) { return r.long_term; }).length;
+    
+    resultsSummary.textContent = 
+      lastResults.length + ' نتیجه — ' + 
+      onlineCount + ' Online — ' + 
+      longTermCount + ' 💎💎 بلندمدت — ' + 
+      persistentCount + ' 💎 ماندگار';
+    
     resultsWrap.hidden = false;
   }
 
@@ -161,7 +183,7 @@
     setStatus(null);
 
     var loadingMessages = [
-      '⏳ دریافت لیست اولیه IPها...',
+      '⏳ دریافت لیست IPها...',
       '🔍 بررسی زنده بودن IPها...',
       '⚡ تست سرعت IPهای برتر...',
       '📊 مرتب‌سازی نتایج...',
@@ -188,10 +210,17 @@
 
         var ageMin = Math.round((Date.now() / 1000 - data.updated) / 60);
         var persistentCount = data.persistent_count || 0;
+        var longTermCount = data.long_term_count || 0;
+        var freshCount = data.fresh_count || 0;
+        var oldCount = data.old_count || 0;
+        
         setStatus(
           '🔄 آخرین به‌روزرسانی: ' + ageMin + ' دقیقه پیش — ' +
-          '✅ ' + data.online_count + ' IP آنلاین از ' + data.total_tested + ' تست‌شده — ' +
-          '💎 ' + persistentCount + ' IP ماندگار',
+          '✅ ' + data.online_count + ' IP آنلاین — ' +
+          '🆕 ' + freshCount + ' تازه — ' +
+          '📦 ' + oldCount + ' قبلی — ' +
+          '💎 ' + persistentCount + ' ماندگار — ' +
+          '💎💎 ' + longTermCount + ' بلندمدت',
           'info'
         );
 
@@ -225,6 +254,7 @@
     });
   });
 
+  // Config Builder (بدون تغییر)
   var configsInput = $('#configs-input');
   var ipsInput = $('#ips-input');
   var configsCount = $('#configs-count');
