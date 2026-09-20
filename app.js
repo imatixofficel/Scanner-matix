@@ -1,6 +1,3 @@
-/* =========================================================================
-   Matix — app.js
-   ========================================================================= */
 (function () {
   'use strict';
 
@@ -34,7 +31,6 @@
     return Promise.resolve();
   }
 
-  /* Loading screen */
   window.addEventListener('load', function () {
     setTimeout(function () {
       var screen = $('#loading-screen');
@@ -44,7 +40,6 @@
     }, 1300);
   });
 
-  /* Drawer */
   var hamburgerBtn = $('#hamburger-btn');
   var drawer = $('#drawer');
   var drawerOverlay = $('#drawer-overlay');
@@ -81,9 +76,6 @@
     });
   });
 
-  /* =========================================================================
-     IP SCANNER
-     ========================================================================= */
   var startScanBtn = $('#start-scan-btn');
   var ipCountSelect = $('#ip-count');
   var progressWrap = $('#scan-progress-wrap');
@@ -119,6 +111,8 @@
 
   function renderResults(results) {
     lastResults = results.slice().sort(function (a, b) {
+      if (a.persistent && !b.persistent) return -1;
+      if (!a.persistent && b.persistent) return 1;
       var am = a.status === 'online' ? a.ms : Infinity;
       var bm = b.status === 'online' ? b.ms : Infinity;
       return am - bm;
@@ -131,16 +125,20 @@
       var tr = document.createElement('tr');
       tr.style.animationDelay = (i * 18) + 'ms';
       if (i < bestCount && r.status === 'online') tr.classList.add('is-best');
+      if (r.persistent) tr.classList.add('is-persistent');
 
       var pingText = r.status === 'online' && typeof r.ms === 'number' ? r.ms + ' ms' : '—';
+      var speedText = r.speed_mbps ? ' | ' + r.speed_mbps + ' Mbps' : '';
+      var persistentBadge = r.persistent ? ' 💎' : '';
       var statusClass = r.status === 'online' ? 'online' : 'offline';
       var statusText = r.status === 'online' ? 'Online' : 'Offline';
+      var coloText = r.colo ? ' <span style="opacity:.6;font-size:11px">' + r.colo + '</span>' : '';
 
       tr.innerHTML =
         '<td>' + (i + 1) + '</td>' +
-        '<td class="ip-cell">' + r.ip + '</td>' +
-        '<td class="ping-cell">' + pingText + '</td>' +
-        '<td><span class="status-pill ' + statusClass + '">' + statusText + '</span></td>' +
+        '<td class="ip-cell">' + r.ip + persistentBadge + '</td>' +
+        '<td class="ping-cell">' + pingText + speedText + '</td>' +
+        '<td><span class="status-pill ' + statusClass + '">' + statusText + '</span>' + coloText + '</td>' +
         '<td><button class="copy-row-btn" type="button">Copy</button></td>';
 
       tr.querySelector('.copy-row-btn').addEventListener('click', function () {
@@ -151,7 +149,8 @@
     });
 
     var onlineCount = lastResults.filter(function (r) { return r.status === 'online'; }).length;
-    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online';
+    var persistentCount = lastResults.filter(function (r) { return r.persistent; }).length;
+    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online — ' + persistentCount + ' ماندگار 💎';
     resultsWrap.hidden = false;
   }
 
@@ -160,7 +159,20 @@
     startScanBtn.disabled = true;
     resultsWrap.hidden = true;
     setStatus(null);
-    setProgress(30, 'در حال دریافت نتایج اسکن از سرور...', 0, count);
+
+    var loadingMessages = [
+      '⏳ دریافت لیست اولیه IPها...',
+      '🔍 بررسی زنده بودن IPها...',
+      '⚡ تست سرعت IPهای برتر...',
+      '📊 مرتب‌سازی نتایج...',
+      '✅ آماده‌سازی نمایش...'
+    ];
+    var loadingIdx = 0;
+    setProgress(5, loadingMessages[0], 0, count);
+    var loadingInterval = setInterval(function() {
+      loadingIdx = (loadingIdx + 1) % loadingMessages.length;
+      setProgress((loadingIdx + 1) * 18, loadingMessages[loadingIdx], 0, count);
+    }, 500);
 
     fetch(RESULTS_JSON_URL + '?t=' + Date.now())
       .then(function (res) {
@@ -168,17 +180,18 @@
         return res.json();
       })
       .then(function (data) {
+        clearInterval(loadingInterval);
         if (!data.results || !data.results.length) {
           throw new Error('هنوز اسکنی انجام نشده. چند دقیقه دیگه امتحان کن.');
         }
-
         setProgress(100, 'تکمیل شد', data.results.length, data.results.length);
 
-        var ageMin = Math.round((Date.now() / 1000) - data.updated) / 60;
-        ageMin = Math.round(ageMin);
+        var ageMin = Math.round((Date.now() / 1000 - data.updated) / 60);
+        var persistentCount = data.persistent_count || 0;
         setStatus(
-          'آخرین به‌روزرسانی: ' + ageMin + ' دقیقه پیش — ' +
-          data.online_count + ' IP آنلاین از ' + data.total_tested + ' تست‌شده',
+          '🔄 آخرین به‌روزرسانی: ' + ageMin + ' دقیقه پیش — ' +
+          '✅ ' + data.online_count + ' IP آنلاین از ' + data.total_tested + ' تست‌شده — ' +
+          '💎 ' + persistentCount + ' IP ماندگار',
           'info'
         );
 
@@ -187,9 +200,10 @@
           progressWrap.hidden = true;
           renderResults(results);
           startScanBtn.disabled = false;
-        }, 250);
+        }, 500);
       })
       .catch(function (err) {
+        clearInterval(loadingInterval);
         progressWrap.hidden = true;
         setStatus('دریافت نتایج با خطا مواجه شد: ' + err.message, 'error');
         startScanBtn.disabled = false;
@@ -211,9 +225,6 @@
     });
   });
 
-  /* =========================================================================
-     CONFIG BUILDER
-     ========================================================================= */
   var configsInput = $('#configs-input');
   var ipsInput = $('#ips-input');
   var configsCount = $('#configs-count');
