@@ -17,68 +17,38 @@
   }
 
   function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
-    }
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
     var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.focus(); ta.select();
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
     try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
     return Promise.resolve();
   }
 
-  /* =========================================================================
-     Country Flags
-     ========================================================================= */
+  /* کشورها */
   var COUNTRY_FLAGS = {
-    'FRA': { flag: '🇩🇪', name: 'آلمان (فرانکفورت)' },
-    'DUS': { flag: '🇩🇪', name: 'آلمان (دوسلدورف)' },
+    'FRA': { flag: '🇩🇪', name: 'آلمان' },
     'AMS': { flag: '🇳🇱', name: 'هلند' },
     'LHR': { flag: '🇬🇧', name: 'انگلیس' },
     'CDG': { flag: '🇫🇷', name: 'فرانسه' },
-    'MXP': { flag: '🇮🇹', name: 'ایتالیا' },
-    'FCO': { flag: '🇮🇹', name: 'ایتالیا (روم)' },
     'VIE': { flag: '🇦🇹', name: 'اتریش' },
     'WAW': { flag: '🇵🇱', name: 'لهستان' },
-    'BRU': { flag: '🇧🇪', name: 'بلژیک' },
-    'MAD': { flag: '🇪🇸', name: 'اسپانیا' },
-    'BCN': { flag: '🇪🇸', name: 'اسپانیا (بارسلونا)' },
     'ZRH': { flag: '🇨🇭', name: 'سوئیس' },
     'IST': { flag: '🇹🇷', name: 'ترکیه' },
     'OTP': { flag: '🇷🇴', name: 'رومانی' },
-    'SOF': { flag: '🇧🇬', name: 'بلغارستان' },
     'ARN': { flag: '🇸🇪', name: 'سوئد' },
     'HEL': { flag: '🇫🇮', name: 'فنلاند' },
     'OSL': { flag: '🇳🇴', name: 'نروژ' },
     'CPH': { flag: '🇩🇰', name: 'دانمارک' },
     'LAX': { flag: '🇺🇸', name: 'آمریکا' },
-    'SEA': { flag: '🇺🇸', name: 'آمریکا (سیاتل)' },
-    'SJC': { flag: '🇺🇸', name: 'آمریکا (سن‌خوزه)' },
-    'IAD': { flag: '🇺🇸', name: 'آمریکا (واشنگتن)' },
-    'EWR': { flag: '🇺🇸', name: 'آمریکا (نیویورک)' },
-    'ORD': { flag: '🇺🇸', name: 'آمریکا (شیکاگو)' },
+    'SEA': { flag: '🇺🇸', name: 'آمریکا' },
+    'IAD': { flag: '🇺🇸', name: 'آمریکا' },
     'YYZ': { flag: '🇨🇦', name: 'کانادا' },
     'NRT': { flag: '🇯🇵', name: 'ژاپن' },
-    'KIX': { flag: '🇯🇵', name: 'ژاپن (اوساکا)' },
     'SIN': { flag: '🇸🇬', name: 'سنگاپور' },
-    'HKG': { flag: '🇭🇰', name: 'هنگ‌کنگ' },
-    'ICN': { flag: '🇰🇷', name: 'کره جنوبی' },
-    'BOM': { flag: '🇮🇳', name: 'هند' },
-    'DEL': { flag: '🇮🇳', name: 'هند (دهلی)' },
-    'DXB': { flag: '🇦🇪', name: 'امارات' },
-    'TLV': { flag: '🇮🇱', name: 'اسرائیل' },
-    'SYD': { flag: '🇦🇺', name: 'استرالیا' },
-    'GRU': { flag: '🇧🇷', name: 'برزیل' },
-    'EZE': { flag: '🇦🇷', name: 'آرژانتین' },
-    'JNB': { flag: '🇿🇦', name: 'آفریقای جنوبی' }
+    'DXB': { flag: '🇦🇪', name: 'امارات' }
   };
-
-  var selectedCountry = null;
-  var cachedScannerIPs = [];
 
   window.addEventListener('load', function () {
     setTimeout(function () {
@@ -89,6 +59,7 @@
     }, 1300);
   });
 
+  /* Drawer */
   var hamburgerBtn = $('#hamburger-btn');
   var drawer = $('#drawer');
   var drawerOverlay = $('#drawer-overlay');
@@ -109,9 +80,7 @@
     if (drawer.classList.contains('is-open')) closeDrawer(); else openDrawer();
   });
   drawerOverlay.addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeDrawer();
-  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
 
   var drawerLinks = $all('.drawer-link');
   var pages = $all('.page');
@@ -125,116 +94,7 @@
     });
   });
 
-  /* =========================================================================
-     Country Picker
-     ========================================================================= */
-
-  var countryPicker = document.getElementById('countryPicker');
-  var countryTrigger = document.getElementById('countryTrigger');
-  var countryTriggerFlag = document.getElementById('countryTriggerFlag');
-  var countryTriggerName = document.getElementById('countryTriggerName');
-  var countrySearch = document.getElementById('countrySearch');
-  var countryList = document.getElementById('countryList');
-  var countryStatus = document.getElementById('countryStatus');
-
-  if (countryTrigger) {
-    countryTrigger.addEventListener('click', function (e) {
-      e.stopPropagation();
-      countryPicker.classList.toggle('is-open');
-      if (countryPicker.classList.contains('is-open')) {
-        countrySearch.focus();
-        renderCountryList();
-      }
-    });
-
-    document.addEventListener('click', function (e) {
-      if (countryPicker && !countryPicker.contains(e.target)) {
-        countryPicker.classList.remove('is-open');
-      }
-    });
-
-    countrySearch.addEventListener('input', renderCountryList);
-  }
-
-  function renderCountryList() {
-    if (!countryList) return;
-    var query = (countrySearch.value || '').trim().toLowerCase();
-    var countByColo = {};
-
-    cachedScannerIPs.forEach(function (item) {
-      var c = item.colo || 'UNK';
-      countByColo[c] = (countByColo[c] || 0) + 1;
-    });
-
-    var html = '';
-
-    var showAuto = !query || 'خودکار'.indexOf(query) !== -1 || 'auto'.indexOf(query) !== -1 || 'بهترین'.indexOf(query) !== -1;
-    if (showAuto) {
-      html += '<button class="country-item is-auto' + (selectedCountry === null ? ' is-selected' : '') + '" data-colo="">' +
-        '<span class="flag">⚡</span>' +
-        '<span class="name">خودکار (بهترین)</span>' +
-        '<span class="code">AUTO</span>' +
-        '<span class="count-badge">' + cachedScannerIPs.length + '</span>' +
-        '</button>';
-    }
-
-    var sorted = Object.keys(countByColo).sort(function (a, b) { return countByColo[b] - countByColo[a]; });
-
-    sorted.forEach(function (colo) {
-      var info = COUNTRY_FLAGS[colo] || { flag: '🌍', name: colo };
-      if (query && info.name.toLowerCase().indexOf(query) === -1 && colo.toLowerCase().indexOf(query) === -1) return;
-
-      html += '<button class="country-item' + (selectedCountry === colo ? ' is-selected' : '') + '" data-colo="' + colo + '">' +
-        '<span class="flag">' + info.flag + '</span>' +
-        '<span class="name">' + info.name + '</span>' +
-        '<span class="code">' + colo + '</span>' +
-        '<span class="count-badge">' + countByColo[colo] + '</span>' +
-        '</button>';
-    });
-
-    if (!html) html = '<div style="padding:16px; text-align:center; color:var(--text-tertiary);">کشوری یافت نشد</div>';
-
-    countryList.innerHTML = html;
-
-    countryList.querySelectorAll('.country-item').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var colo = btn.dataset.colo;
-        selectedCountry = colo || null;
-
-        if (colo) {
-          var info = COUNTRY_FLAGS[colo] || { flag: '🌍', name: colo };
-          countryTriggerFlag.textContent = info.flag;
-          countryTriggerName.textContent = info.name + ' (' + colo + ')';
-        } else {
-          countryTriggerFlag.textContent = '⚡';
-          countryTriggerName.textContent = 'خودکار (بهترین)';
-        }
-
-        countryPicker.classList.remove('is-open');
-        updateCountryStatus();
-      });
-    });
-  }
-
-  function updateCountryStatus() {
-    if (!countryStatus) return;
-    if (!cachedScannerIPs.length) {
-      countryStatus.textContent = 'هنوز IP از اسکنر دریافت نشده';
-      return;
-    }
-    if (selectedCountry) {
-      var info = COUNTRY_FLAGS[selectedCountry] || { flag: '🌍', name: selectedCountry };
-      var count = cachedScannerIPs.filter(function (r) { return r.colo === selectedCountry; }).length;
-      countryStatus.innerHTML = '✅ فیلتر فعال: ' + info.flag + ' ' + info.name + ' — ' + count + ' IP';
-    } else {
-      countryStatus.innerHTML = '⚡ حالت خودکار فعال — ' + cachedScannerIPs.length + ' IP';
-    }
-  }
-
-  /* =========================================================================
-     IP Scanner
-     ========================================================================= */
-
+  /* Scanner */
   var startScanBtn = $('#start-scan-btn');
   var ipCountSelect = $('#ip-count');
   var progressWrap = $('#scan-progress-wrap');
@@ -251,11 +111,7 @@
   var lastResults = [];
 
   function setStatus(message, kind) {
-    if (!message) {
-      statusMsg.hidden = true;
-      statusMsg.textContent = '';
-      return;
-    }
+    if (!message) { statusMsg.hidden = true; statusMsg.textContent = ''; return; }
     statusMsg.hidden = false;
     statusMsg.className = 'status-msg' + (kind ? ' is-' + kind : '');
     statusMsg.textContent = message;
@@ -285,56 +141,41 @@
     lastResults.forEach(function (r, i) {
       var tr = document.createElement('tr');
       tr.style.animationDelay = (i * 18) + 'ms';
-      
       if (i < bestCount && r.status === 'online') tr.classList.add('is-best');
       if (r.persistent) tr.classList.add('is-persistent');
       if (r.long_term) tr.classList.add('is-long-term');
 
       var pingText = r.status === 'online' && typeof r.ms === 'number' ? r.ms + ' ms' : '—';
       var speedText = r.speed_mbps ? ' | ' + r.speed_mbps + ' Mbps' : '';
-      
-      var badge = '';
-      if (r.long_term) badge = ' 💎💎';
-      else if (r.persistent) badge = ' 💎';
-      
-      var sourceText = '';
-      if (r.source === 'fresh') sourceText = ' <span style="opacity:.5;font-size:10px">[NEW]</span>';
-      else if (r.source === 'old') sourceText = ' <span style="opacity:.5;font-size:10px">[OLD]</span>';
-      
+      var badge = r.long_term ? ' 💎💎' : (r.persistent ? ' 💎' : '');
+      var sourceText = r.source === 'fresh' ? ' <span style="opacity:.5;font-size:10px">[NEW]</span>' : (r.source === 'old' ? ' <span style="opacity:.5;font-size:10px">[OLD]</span>' : '');
       var statusClass = r.status === 'online' ? 'online' : 'offline';
       var statusText = r.status === 'online' ? 'Online' : 'Offline';
 
-      // پرچم کشور
-      var coloText = '';
+      var countryBadge = '';
       if (r.colo) {
-        var flagInfo = COUNTRY_FLAGS[r.colo] ? COUNTRY_FLAGS[r.colo].flag : '🌍';
-        coloText = ' <span style="opacity:.7;font-size:12px">' + flagInfo + ' ' + r.colo + '</span>';
+        var info = COUNTRY_FLAGS[r.colo];
+        if (info) countryBadge = ' <span class="country-badge">' + info.flag + ' ' + info.name + '</span>';
+        else countryBadge = ' <span class="country-badge">🌍 ' + r.colo + '</span>';
       }
 
       tr.innerHTML =
         '<td>' + (i + 1) + '</td>' +
-        '<td class="ip-cell">' + r.ip + badge + sourceText + '</td>' +
+        '<td class="ip-cell">' + r.ip + badge + sourceText + countryBadge + '</td>' +
         '<td class="ping-cell">' + pingText + speedText + '</td>' +
-        '<td><span class="status-pill ' + statusClass + '">' + statusText + '</span>' + coloText + '</td>' +
+        '<td><span class="status-pill ' + statusClass + '">' + statusText + '</span></td>' +
         '<td><button class="copy-row-btn" type="button">Copy</button></td>';
 
       tr.querySelector('.copy-row-btn').addEventListener('click', function () {
         copyText(r.ip).then(function () { showToast('Copied ✓', 'success'); });
       });
-
       resultsBody.appendChild(tr);
     });
 
     var onlineCount = lastResults.filter(function (r) { return r.status === 'online'; }).length;
-    var persistentCount = lastResults.filter(function (r) { return r.persistent; }).length;
-    var longTermCount = lastResults.filter(function (r) { return r.long_term; }).length;
-    
-    resultsSummary.textContent = 
-      lastResults.length + ' نتیجه — ' + 
-      onlineCount + ' Online — ' + 
-      longTermCount + ' 💎💎 بلندمدت — ' + 
-      persistentCount + ' 💎 ماندگار';
-    
+    var pCount = lastResults.filter(function (r) { return r.persistent; }).length;
+    var lCount = lastResults.filter(function (r) { return r.long_term; }).length;
+    resultsSummary.textContent = lastResults.length + ' نتیجه — ' + onlineCount + ' Online — ' + lCount + ' 💎💎 — ' + pCount + ' 💎';
     resultsWrap.hidden = false;
   }
 
@@ -344,64 +185,23 @@
     resultsWrap.hidden = true;
     setStatus(null);
 
-    var loadingMessages = [
-      '⏳ دریافت لیست IPها...',
-      '🔍 بررسی زنده بودن IPها...',
-      '⚡ تست سرعت IPهای برتر...',
-      '📊 مرتب‌سازی نتایج...',
-      '✅ آماده‌سازی نمایش...'
-    ];
-    var loadingIdx = 0;
-    setProgress(5, loadingMessages[0], 0, count);
-    var loadingInterval = setInterval(function() {
-      loadingIdx = (loadingIdx + 1) % loadingMessages.length;
-      setProgress((loadingIdx + 1) * 18, loadingMessages[loadingIdx], 0, count);
+    var msgs = ['⏳ دریافت لیست...', '🔍 بررسی...', '⚡ تست...', '📊 مرتب‌سازی...', '✅ آماده...'];
+    var idx = 0;
+    setProgress(5, msgs[0], 0, count);
+    var int = setInterval(function () {
+      idx = (idx + 1) % msgs.length;
+      setProgress((idx + 1) * 18, msgs[idx], 0, count);
     }, 500);
 
     fetch(RESULTS_JSON_URL + '?t=' + Date.now())
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
+      .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
       .then(function (data) {
-        clearInterval(loadingInterval);
-        if (!data.results || !data.results.length) {
-          throw new Error('هنوز اسکنی انجام نشده. چند دقیقه دیگه امتحان کن.');
-        }
+        clearInterval(int);
+        if (!data.results || !data.results.length) throw new Error('هنوز اسکنی انجام نشده.');
         setProgress(100, 'تکمیل شد', data.results.length, data.results.length);
-
-        // ذخیره IPها برای فیلتر کشور
-        if (!cachedScannerIPs.length) {
-          cachedScannerIPs = data.results.slice();
-          updateCountryStatus();
-        }
-
         var ageMin = Math.round((Date.now() / 1000 - data.updated) / 60);
-        var persistentCount = data.persistent_count || 0;
-        var longTermCount = data.long_term_count || 0;
-        var freshCount = data.fresh_count || 0;
-        var oldCount = data.old_count || 0;
-        
-        setStatus(
-          '🔄 آخرین به‌روزرسانی: ' + ageMin + ' دقیقه پیش — ' +
-          '✅ ' + data.online_count + ' IP آنلاین — ' +
-          '🆕 ' + freshCount + ' تازه — ' +
-          '📦 ' + oldCount + ' قبلی — ' +
-          '💎 ' + persistentCount + ' ماندگار — ' +
-          '💎💎 ' + longTermCount + ' بلندمدت',
-          'info'
-        );
-
-        // فیلتر بر اساس کشور انتخاب‌شده
-        var filtered = data.results;
-        if (selectedCountry) {
-          filtered = data.results.filter(function (r) { return r.colo === selectedCountry; });
-          if (!filtered.length) {
-            throw new Error('هیچ IPی از این کشور پیدا نشد. کشور دیگه‌ای انتخاب کن.');
-          }
-        }
-
-        var results = filtered.slice(0, count);
+        setStatus('🔄 ' + ageMin + ' دقیقه پیش — ✅ ' + data.online_count + ' IP آنلاین — 💎 ' + (data.persistent_count || 0) + ' — 💎💎 ' + (data.long_term_count || 0), 'info');
+        var results = data.results.slice(0, count);
         setTimeout(function () {
           progressWrap.hidden = true;
           renderResults(results);
@@ -409,32 +209,25 @@
         }, 500);
       })
       .catch(function (err) {
-        clearInterval(loadingInterval);
+        clearInterval(int);
         progressWrap.hidden = true;
-        setStatus('دریافت نتایج با خطا مواجه شد: ' + err.message, 'error');
+        setStatus('خطا: ' + err.message, 'error');
         startScanBtn.disabled = false;
       });
   });
 
   copyBestBtn.addEventListener('click', function () {
     var best = lastResults.filter(function (r) { return r.status === 'online'; }).slice(0, 20);
-    if (!best.length) { showToast('نتیجه‌ای برای کپی وجود ندارد', 'error'); return; }
-    copyText(best.map(function (r) { return r.ip; }).join('\n')).then(function () {
-      showToast('Copied ✓', 'success');
-    });
+    if (!best.length) { showToast('نتیجه‌ای نیست', 'error'); return; }
+    copyText(best.map(function (r) { return r.ip; }).join('\n')).then(function () { showToast('Copied ✓', 'success'); });
   });
 
   copyAllBtn.addEventListener('click', function () {
-    if (!lastResults.length) { showToast('نتیجه‌ای برای کپی وجود ندارد', 'error'); return; }
-    copyText(lastResults.map(function (r) { return r.ip; }).join('\n')).then(function () {
-      showToast('Copied ✓', 'success');
-    });
+    if (!lastResults.length) { showToast('نتیجه‌ای نیست', 'error'); return; }
+    copyText(lastResults.map(function (r) { return r.ip; }).join('\n')).then(function () { showToast('Copied ✓', 'success'); });
   });
 
-  /* =========================================================================
-     Config Builder
-     ========================================================================= */
-
+  /* Config Builder */
   var configsInput = $('#configs-input');
   var ipsInput = $('#ips-input');
   var configsCount = $('#configs-count');
@@ -448,10 +241,7 @@
   var VLESS_RE = /^vless:\/\/([^@]+)@([^:/?#\s]+):(\d+)(\/[^?#]*)?(\?[^#]*)?(#.*)?$/i;
   var IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
-  function linesOf(textarea) {
-    return textarea.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
-  }
-
+  function linesOf(ta) { return ta.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean); }
   function updateCounts() {
     configsCount.textContent = linesOf(configsInput).length;
     ipsCount.textContent = linesOf(ipsInput).length;
@@ -460,47 +250,31 @@
   ipsInput.addEventListener('input', updateCounts);
   updateCounts();
 
-  function swapAddress(configLine, newIp) {
-    var m = configLine.match(VLESS_RE);
+  function swapAddress(c, newIp) {
+    var m = c.match(VLESS_RE);
     if (!m) return null;
-    var uuid = m[1], port = m[3], path = m[4] || '', query = m[5] || '', fragment = m[6] || '';
-    return 'vless://' + uuid + '@' + newIp + ':' + port + path + query + fragment;
+    return 'vless://' + m[1] + '@' + newIp + ':' + m[3] + (m[4] || '') + (m[5] || '') + (m[6] || '');
   }
 
   combineBtn.addEventListener('click', function () {
     var configs = linesOf(configsInput);
     var ips = linesOf(ipsInput);
-
-    if (!configs.length) { showToast('لطفاً حداقل یک کانفیگ VLESS وارد کنید.', 'error'); return; }
-    if (!ips.length) { showToast('لطفاً حداقل یک IP وارد کنید.', 'error'); return; }
-
-    var invalidIp = ips.find(function (ip) { return !IPV4_RE.test(ip); });
-    if (invalidIp) { showToast('IP نامعتبر: ' + invalidIp, 'error'); return; }
-
-    var invalidConfigIndex = configs.findIndex(function (c) { return !VLESS_RE.test(c); });
-    if (invalidConfigIndex !== -1) {
-      showToast('کانفیگ نامعتبر در خط ' + (invalidConfigIndex + 1), 'error');
-      return;
-    }
-
+    if (!configs.length) { showToast('کانفیگ وارد کن', 'error'); return; }
+    if (!ips.length) { showToast('IP وارد کن', 'error'); return; }
+    var badIp = ips.find(function (ip) { return !IPV4_RE.test(ip); });
+    if (badIp) { showToast('IP نامعتبر: ' + badIp, 'error'); return; }
+    var badIdx = configs.findIndex(function (c) { return !VLESS_RE.test(c); });
+    if (badIdx !== -1) { showToast('کانفیگ نامعتبر خط ' + (badIdx + 1), 'error'); return; }
     var combined = [];
-    configs.forEach(function (config) {
-      ips.forEach(function (ip) {
-        var out = swapAddress(config, ip);
-        if (out) combined.push(out);
-      });
-    });
-
+    configs.forEach(function (c) { ips.forEach(function (ip) { var o = swapAddress(c, ip); if (o) combined.push(o); }); });
     combinedOutput.value = combined.join('\n');
-    combinedSummary.textContent = configs.length + ' کانفیگ × ' + ips.length + ' IP = ' + combined.length + ' کانفیگ ترکیبی';
+    combinedSummary.textContent = configs.length + ' × ' + ips.length + ' = ' + combined.length;
     combinedWrap.hidden = false;
   });
 
   copyCombinedBtn.addEventListener('click', function () {
-    if (!combinedOutput.value) { showToast('چیزی برای کپی وجود ندارد', 'error'); return; }
-    copyText(combinedOutput.value).then(function () {
-      showToast('Copied ✓', 'success');
-    });
+    if (!combinedOutput.value) { showToast('چیزی نیست', 'error'); return; }
+    copyText(combinedOutput.value).then(function () { showToast('Copied ✓', 'success'); });
   });
 
 })();
