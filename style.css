@@ -503,7 +503,6 @@ button, select, textarea, input{ font-family:inherit; }
 }
 .results-table tbody tr.is-best{ background:var(--accent-soft); }
 
-/* 💎 Persistent IPs */
 .results-table tbody tr.is-persistent {
   background: linear-gradient(90deg, rgba(255, 215, 0, 0.08), transparent);
   border-right: 3px solid #FFD700;
@@ -516,7 +515,6 @@ button, select, textarea, input{ font-family:inherit; }
   font-size: 12px;
 }
 
-/* 💎💎 Long-term IPs */
 .results-table tbody tr.is-long-term {
   background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(124, 58, 237, 0.08));
   border-right: 4px solid #FFD700;
