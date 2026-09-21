@@ -820,3 +820,15 @@ button, select, textarea, input{ font-family:inherit; }
 @media (min-width: 1024px){
   .content{ max-width:1040px; padding-top:44px; }
 }
+.country-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  white-space: nowrap;
+}
