@@ -40,11 +40,42 @@
   </div>
 </div>
 
+<!-- 🚨 Emergency fallback: close loading screen no matter what happens -->
+<script>
+  (function () {
+    function closeSplash() {
+      var s = document.getElementById('loading-screen');
+      if (!s) return;
+      s.classList.add('is-hidden');
+      setTimeout(function () {
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+      }, 700);
+    }
+    // حداکثر ۲.۵ ثانیه بعد از DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(closeSplash, 2500);
+      });
+    } else {
+      setTimeout(closeSplash, 2500);
+    }
+    // حتی اگه ۵ ثانیه بعد هم باز بود، ببندش
+    setTimeout(closeSplash, 5000);
+  })();
+</script>
+
 <!-- App Shell -->
 <div id="app" class="app">
 
   <header class="topbar">
     <div class="brand">
+      <button class="star-btn" id="starBtn" type="button" aria-label="Star on GitHub">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span class="star-label">Star</span>
+        <span class="star-count" id="starCount">...</span>
+      </button>
       <img src="logo.png" alt="" width="32" height="32" class="brand-mark">
       <span class="brand-name">Matix</span>
     </div>
@@ -86,6 +117,27 @@
       <div class="page-head">
         <h1>Cloudflare IP Scanner</h1>
         <p>بررسی IPهای رسمی Cloudflare و نمایش نتایج بر اساس Latency.</p>
+      </div>
+
+      <!-- Country Filter -->
+      <div class="panel" id="country-filter-panel" style="margin-bottom:20px;">
+        <label style="display:block; font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:10px;">
+          🌍 فیلتر کشور (بر اساس موقعیت Cloudflare)
+        </label>
+        <div class="country-picker" id="countryPicker">
+          <button class="country-picker-trigger" type="button" id="countryTrigger">
+            <span class="flag" id="countryTriggerFlag">⚡</span>
+            <span id="countryTriggerName">خودکار (بهترین)</span>
+            <svg class="caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <div class="country-picker-panel" id="countryPanel">
+            <input type="text" class="country-picker-search" id="countrySearch" placeholder="🔍 جستجوی کشور...">
+            <div id="countryList"></div>
+          </div>
+        </div>
+        <div class="muted" id="countryStatus" style="margin-top:10px; font-size:12.5px; color:var(--text-tertiary);"></div>
       </div>
 
       <div class="panel scan-controls">
@@ -186,6 +238,37 @@ vless://uuid@old-address:443?..."></textarea>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- Toast Container for Success Notifications -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- Floating Dock -->
+<nav class="floating-dock">
+  <a href="https://github.com/imatixofficel" target="_blank" rel="noopener" class="dock-item" title="GitHub">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+    <span class="dock-tooltip">GitHub</span>
+  </a>
+  <a href="https://t.me/Imatix7" target="_blank" rel="noopener" class="dock-item" title="Telegram">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"></path><path d="M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+    <span class="dock-tooltip">Telegram</span>
+  </a>
+  <a href="https://youtube.com/@i.matix7" target="_blank" rel="noopener" class="dock-item" title="YouTube">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
+    <span class="dock-tooltip">YouTube</span>
+  </a>
+  <a href="https://imatixofficel.github.io/Scanner-matix/" target="_blank" rel="noopener" class="dock-item" title="Scanner">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    <span class="dock-tooltip">Scanner</span>
+  </a>
+  <a href="https://matix-wizard.imatixofficel.workers.dev/" target="_blank" rel="noopener" class="dock-item" title="Wizard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+    <span class="dock-tooltip">Wizard</span>
+  </a>
+  <a href="https://github.com/imatixofficel/Matix-edg" target="_blank" rel="noopener" class="dock-item" title="Panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+    <span class="dock-tooltip">Panel</span>
+  </a>
+</nav>
 
 <script src="app.js"></script>
 </body>
