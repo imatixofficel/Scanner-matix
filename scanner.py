@@ -377,4 +377,4 @@ def main():
         if r["ip"] not in seen:
             seen.add(r["ip"])
             online_unique.append(r)
-    print(f"      Unique in batch
+  print(f"      Unique in batch: {len(online_unique)}")
