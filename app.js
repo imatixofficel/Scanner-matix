@@ -165,15 +165,27 @@
     if (progressCount) progressCount.textContent = doneCount + ' / ' + totalCount;
   }
 
-  /* ---- زمان نسبی ---- */
+  /* ---- زمان نسبی (هوشمند) ---- */
   function timeAgo(ts) {
+    if (!ts) return 'نامشخص';
+
+    // اگه میلی‌ثانیه بود → ثانیه
+    if (ts > 1e12) ts = Math.floor(ts / 1000);
+
     var now = Math.floor(Date.now() / 1000);
     var diff = now - ts;
+
+    // اگه زمان آینده بود → ساعت سرور خراب
+    if (diff < -60) return '⚠️ زمان نامعتبر';
+
+    // اگه تو ۶۰ ثانیه آینده بود → بپذیر به عنوان الان
     if (diff < 0) diff = 0;
 
-    if (diff < 60)        return 'همین الان';
-    if (diff < 3600)      return Math.floor(diff / 60) + ' دقیقه پیش';
-    if (diff < 86400)     return Math.floor(diff / 3600) + ' ساعت پیش';
+    if (diff < 30)         return 'همین الان';
+    if (diff < 60)         return diff + ' ثانیه پیش';
+    if (diff < 3600)       return Math.floor(diff / 60) + ' دقیقه پیش';
+    if (diff < 86400)      return Math.floor(diff / 3600) + ' ساعت پیش';
+    if (diff < 86400 * 30) return Math.floor(diff / 86400) + ' روز پیش';
     return Math.floor(diff / 86400) + ' روز پیش';
   }
 
@@ -182,17 +194,44 @@
     var ts = data.updated || data.last_updated || 0;
     if (!ts) { lastUpdateBadge.hidden = true; return; }
 
+    if (ts > 1e12) ts = Math.floor(ts / 1000);
+
+    var now = Math.floor(Date.now() / 1000);
+    var diff = now - ts;
     var ago = timeAgo(ts);
-    var diffMin = (Math.floor(Date.now() / 1000) - ts) / 60;
 
     var cls = 'last-update-badge';
+
+    // اگه timestamp آینده بود (> ۶۰ ثانیه جلوتر)
+    if (diff < -60) {
+      cls += ' is-stale';
+      lastUpdateBadge.className = cls;
+      lastUpdateBadge.innerHTML =
+        '<span class="dot"></span>' +
+        '<span>⚠️ ساعت سرور نامعتبر — لطفاً بعداً تلاش کن</span>';
+      lastUpdateBadge.hidden = false;
+      return;
+    }
+
+    var diffMin = Math.max(0, diff) / 60;
     if (diffMin > 60 * 24)      cls += ' is-stale';
     else if (diffMin > 30)      cls += ' is-old';
+
+    // زمان دقیق به شمسی
+    var exact = '';
+    try {
+      exact = new Date(ts * 1000).toLocaleString('fa-IR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) { exact = ''; }
 
     lastUpdateBadge.className = cls;
     lastUpdateBadge.innerHTML =
       '<span class="dot"></span>' +
-      '<span>آخرین بروزرسانی IPها: <strong>' + ago + '</strong></span>';
+      '<span>آخرین بروزرسانی IPها: <strong>' + ago + '</strong>' +
+      (exact ? ' <span style="opacity:.6">(' + exact + ')</span>' : '') +
+      '</span>';
     lastUpdateBadge.hidden = false;
   }
 
@@ -391,11 +430,7 @@
   if (configsInput) configsInput.addEventListener('input', updateCounts);
   if (ipsInput)     ipsInput.addEventListener('input', updateCounts);
 
-  /**
-   * جایگزینی host در کانفیگ VLESS
-   * ساختار: vless://uuid@host:port?query#remark
-   * فقط host عوض می‌شه، پورت و بقیه ثابت می‌مونن.
-   */
+  /* جایگزینی host در VLESS */
   function replaceHost(configLine, newIp) {
     try {
       var m = configLine.match(/^(vless:\/\/[^@]+@)([^:\/?#]+)(:\d+)([^\s]*)$/i);
