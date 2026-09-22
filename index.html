@@ -40,6 +40,23 @@
   </div>
 </div>
 
+<!-- 🚨 Emergency fallback: close loading screen after 2 seconds no matter what -->
+<script>
+  (function () {
+    function closeSplash() {
+      var s = document.getElementById('loading-screen');
+      if (!s) return;
+      s.style.opacity = '0';
+      s.style.pointerEvents = 'none';
+      setTimeout(function () {
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+      }, 700);
+    }
+    setTimeout(closeSplash, 2000);
+    setTimeout(closeSplash, 5000);
+  })();
+</script>
+
 <!-- App Shell -->
 <div id="app" class="app">
 
