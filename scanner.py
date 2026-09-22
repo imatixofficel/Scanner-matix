@@ -31,11 +31,6 @@ MIN_ONLINE_COUNT = 5
 LONG_TERM_COUNT = 50
 MAX_RESULTS = 2000
 
-# ⚙️ بازه مجاز سال (برای تشخیص ساعت خراب)
-# ⚠️ اگه سال جدید شد، این عدد رو آپدیت کن
-MIN_YEAR = 2025
-MAX_YEAR = 2025
-
 # ============================================================
 # فایل‌ها
 # ============================================================
@@ -45,24 +40,23 @@ HISTORY_FILE = "data/history.json"
 
 
 # ============================================================
-# 🕐 ساعت مطمئن (ضد خرابی سرور GitHub)
+# 🕐 ساعت مطمئن
 # ============================================================
 def safe_now():
     """
     زمان فعلی رو برمی‌گردونه.
-    اگه ساعت سیستم خارج از بازه معقول بود، از اینترنت می‌خونه.
+    اگه ساعت سیستم خراب بود، از HTTP header می‌خونه.
     """
     local_ts = int(time.time())
     year = datetime.datetime.utcfromtimestamp(local_ts).year
 
-    # ✅ اگه ساعت داخل بازه بود، استفاده کن
-    if MIN_YEAR <= year <= MAX_YEAR:
+    # ✅ اگه سال بین 2024 تا 2030 بود → استفاده کن
+    if 2024 <= year <= 2030:
         return local_ts
 
-    # ❌ ساعت خرابه — از اینترنت بخون
-    print(f"⚠️  System clock is WRONG (year={year}) — fetching from internet...")
+    print(f"⚠️  System clock is wrong (year={year}) — fetching from internet...")
 
-    # روش ۱: Google
+    # ─── روش ۱: Google ───
     try:
         req = urllib.request.Request("https://www.google.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -70,13 +64,12 @@ def safe_now():
             if date_header:
                 dt = parsedate_to_datetime(date_header)
                 fixed_ts = int(dt.timestamp())
-                if MIN_YEAR <= dt.year <= MAX_YEAR:
-                    print(f"✅ Got from Google: {dt}")
-                    return fixed_ts
+                print(f"✅ Got from Google: {dt}")
+                return fixed_ts
     except Exception as e:
         print(f"❌ Google failed: {e}")
 
-    # روش ۲: Cloudflare
+    # ─── روش ۲: Cloudflare ───
     try:
         req = urllib.request.Request("https://cloudflare.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -84,28 +77,26 @@ def safe_now():
             if date_header:
                 dt = parsedate_to_datetime(date_header)
                 fixed_ts = int(dt.timestamp())
-                if MIN_YEAR <= dt.year <= MAX_YEAR:
-                    print(f"✅ Got from Cloudflare: {dt}")
-                    return fixed_ts
+                print(f"✅ Got from Cloudflare: {dt}")
+                return fixed_ts
     except Exception as e:
         print(f"❌ Cloudflare failed: {e}")
 
-    # روش ۳: HTTPBin
+    # ─── روش ۳: HTTPBin ───
     try:
-        req = urllib.request.Request("https://worldtimeapi.org/api/ip", method="GET")
+        req = urllib.request.Request("https://httpbin.org/headers", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-            unixtime = int(data.get("unixtime", 0))
-            if unixtime > 0:
-                dt = datetime.datetime.utcfromtimestamp(unixtime)
-                if MIN_YEAR <= dt.year <= MAX_YEAR:
-                    print(f"✅ Got from WorldTimeAPI: {dt}")
-                    return unixtime
+            date_header = resp.headers.get("Date")
+            if date_header:
+                dt = parsedate_to_datetime(date_header)
+                fixed_ts = int(dt.timestamp())
+                print(f"✅ Got from HTTPBin: {dt}")
+                return fixed_ts
     except Exception as e:
-        print(f"❌ WorldTimeAPI failed: {e}")
+        print(f"❌ HTTPBin failed: {e}")
 
-    # fallback نهایی
-    print(f"🚨 ALL METHODS FAILED — using fallback date")
+    # ─── fallback ───
+    print(f"🚨 All methods failed — using fallback date")
     return int(datetime.datetime(2025, 6, 15, 12, 0, 0).timestamp())
 
 
@@ -386,120 +377,4 @@ def main():
         if r["ip"] not in seen:
             seen.add(r["ip"])
             online_unique.append(r)
-    print(f"      Unique in batch: {len(online_unique)}")
-
-    # ۵. به‌روزرسانی
-    print("\n[5/7] Updating all_ips and history...")
-    all_ips_data = update_all_ips(all_ips_data, online_unique)
-    all_ips_data = cleanup_all_ips(all_ips_data, max_days=365)
-    save_all_ips(all_ips_data)
-    print(f"      Total historical IPs: {len(all_ips_data['ips'])}")
-
-    history = update_history(history, online_unique)
-    save_history(history)
-    persistent = get_persistent_ips(history)
-    long_term = get_long_term_ips(history)
-    print(f"      Persistent IPs (≥{MIN_ONLINE_COUNT}): {len(persistent)}")
-    print(f"      Long-term IPs (≥{LONG_TERM_COUNT}): {len(long_term)}")
-
-    # ۶. خروجی نهایی
-    print("\n[6/7] Building final output (fresh + old, no duplicates)...")
-
-    fresh_ips = {r["ip"]: r for r in online_unique}
-
-    now = safe_now()
-    all_known = all_ips_data.get("ips", {})
-    all_candidates = {}
-
-    # IPهای تازه
-    for ip, r in fresh_ips.items():
-        all_candidates[ip] = {
-            "ip": ip,
-            "ms": r["ms"],
-            "status": "online",
-            "colo": r.get("colo"),
-            "source": "fresh"
-        }
-
-    # IPهای قدیمی
-    for ip, entry in all_known.items():
-        if ip not in all_candidates:
-            last_seen_hours = (now - entry.get("last_seen", 0)) / 3600
-            all_candidates[ip] = {
-                "ip": ip,
-                "ms": entry.get("last_ms"),
-                "status": "online",
-                "colo": entry.get("colo"),
-                "source": "old",
-                "last_seen_hours_ago": round(last_seen_hours, 1)
-            }
-
-    # ماندگاری
-    persistent_map = {p["ip"]: p for p in persistent}
-    long_term_map = {l["ip"]: l for l in long_term}
-
-    final_list = []
-    for ip, item in all_candidates.items():
-        if ip in long_term_map:
-            item["persistent"] = True
-            item["long_term"] = True
-            item["online_count"] = long_term_map[ip]["online_count"]
-        elif ip in persistent_map:
-            item["persistent"] = True
-            item["long_term"] = False
-            item["online_count"] = persistent_map[ip]["online_count"]
-        else:
-            item["persistent"] = False
-            item["long_term"] = False
-            item["online_count"] = history.get("ips", {}).get(ip, {}).get("online_count", 1)
-
-        final_list.append(item)
-
-    final_list.sort(key=lambda x: (
-        not x.get("long_term", False),
-        not x.get("persistent", False),
-        x.get("ms") or 99999
-    ))
-
-    seen = set()
-    unique_final = []
-    for item in final_list:
-        if item["ip"] not in seen:
-            seen.add(item["ip"])
-            unique_final.append(item)
-
-    final_list = unique_final[:MAX_RESULTS]
-    print(f"      Final unique IPs: {len(final_list)}")
-
-    # ۷. ذخیره
-    print("\n[7/7] Saving output...")
-
-    output = {
-        "updated": safe_now(),
-        "total_tested": len(candidates),
-        "online_count": len([x for x in final_list if x["status"] == "online"]),
-        "persistent_count": len(persistent),
-        "long_term_count": len(long_term),
-        "total_historical": len(all_known),
-        "fresh_count": len([x for x in final_list if x.get("source") == "fresh"]),
-        "old_count": len([x for x in final_list if x.get("source") == "old"]),
-        "results": final_list,
-        "long_term_ips": long_term[:50],
-        "persistent_ips": persistent[:100]
-    }
-
-    save_json_file(CLEAN_IPS_FILE, output)
-
-    print(f"\n✅ Done.")
-    print(f"   Fresh IPs today:  {output['fresh_count']}")
-    print(f"   Old IPs (still alive): {output['old_count']}")
-    print(f"   Persistent:       {output['persistent_count']}")
-    print(f"   Long-term:        {output['long_term_count']}")
-    print(f"   Total unique:     {len(final_list)}")
-    print(f"   Updated (unix):   {output['updated']}")
-    print(f"   Updated (UTC):    {datetime.datetime.utcfromtimestamp(output['updated'])}")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()
+    print(f"      Unique in batch
