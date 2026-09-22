@@ -2,6 +2,7 @@
   'use strict';
 
   var RESULTS_JSON_URL = 'data/clean_ips.json';
+  var REPO_API = 'https://api.github.com/repos/imatixofficel/Scanner-matix/commits?path=data/clean_ips.json&per_page=1';
 
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
   function $all(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
@@ -165,20 +166,15 @@
     if (progressCount) progressCount.textContent = doneCount + ' / ' + totalCount;
   }
 
-  /* ---- زمان نسبی (هوشمند) ---- */
+  /* ---- زمان نسبی ---- */
   function timeAgo(ts) {
     if (!ts) return 'نامشخص';
-
-    // اگه میلی‌ثانیه بود → ثانیه
     if (ts > 1e12) ts = Math.floor(ts / 1000);
 
     var now = Math.floor(Date.now() / 1000);
     var diff = now - ts;
 
-    // اگه زمان آینده بود → ساعت سرور خراب
-    if (diff < -60) return '⚠️ زمان نامعتبر';
-
-    // اگه تو ۶۰ ثانیه آینده بود → بپذیر به عنوان الان
+    if (diff < -60) return '⚠️ نامعتبر';
     if (diff < 0) diff = 0;
 
     if (diff < 30)         return 'همین الان';
@@ -189,11 +185,9 @@
     return Math.floor(diff / 86400) + ' روز پیش';
   }
 
-  function renderLastUpdate(data) {
-    if (!lastUpdateBadge) return;
-    var ts = data.updated || data.last_updated || 0;
-    if (!ts) { lastUpdateBadge.hidden = true; return; }
-
+  /* ---- نمایش Badge ---- */
+  function showBadge(ts) {
+    if (!lastUpdateBadge || !ts) return;
     if (ts > 1e12) ts = Math.floor(ts / 1000);
 
     var now = Math.floor(Date.now() / 1000);
@@ -202,13 +196,10 @@
 
     var cls = 'last-update-badge';
 
-    // اگه timestamp آینده بود (> ۶۰ ثانیه جلوتر)
     if (diff < -60) {
       cls += ' is-stale';
       lastUpdateBadge.className = cls;
-      lastUpdateBadge.innerHTML =
-        '<span class="dot"></span>' +
-        '<span>⚠️ ساعت سرور نامعتبر — لطفاً بعداً تلاش کن</span>';
+      lastUpdateBadge.innerHTML = '<span class="dot"></span><span>⚠️ تاریخ نامعتبر</span>';
       lastUpdateBadge.hidden = false;
       return;
     }
@@ -217,7 +208,6 @@
     if (diffMin > 60 * 24)      cls += ' is-stale';
     else if (diffMin > 30)      cls += ' is-old';
 
-    // زمان دقیق به شمسی
     var exact = '';
     try {
       exact = new Date(ts * 1000).toLocaleString('fa-IR', {
@@ -233,6 +223,29 @@
       (exact ? ' <span style="opacity:.6">(' + exact + ')</span>' : '') +
       '</span>';
     lastUpdateBadge.hidden = false;
+  }
+
+  /* ---- از GitHub API تاریخ commit رو بگیر ---- */
+  function renderLastUpdate(data) {
+    if (!lastUpdateBadge) return;
+
+    var apiUrl = REPO_API + '&t=' + Date.now();
+
+    fetch(apiUrl, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (commits) {
+        if (!commits || !commits.length) throw new Error('no commits');
+
+        var commitDate = commits[0].commit.committer.date;
+        var ts = Math.floor(new Date(commitDate).getTime() / 1000);
+        showBadge(ts);
+      })
+      .catch(function (err) {
+        console.warn('[Matix] GitHub API failed, using fallback:', err);
+        var ts = data.updated || data.last_updated || 0;
+        if (ts) showBadge(ts);
+        else if (lastUpdateBadge) lastUpdateBadge.hidden = true;
+      });
   }
 
   /* ---- رندر جدول ---- */
