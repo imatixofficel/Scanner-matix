@@ -22,18 +22,38 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Show server time (debug)
+        run: |
+          echo "🕐 Server UTC: $(date -u)"
+          echo "🕐 Unix: $(date +%s)"
+
       - name: Run scanner
         run: python scanner.py
         timeout-minutes: 12
 
+      - name: Show results (debug)
+        run: |
+          echo "=== data/ folder ==="
+          ls -la data/ || echo "no data folder"
+          echo ""
+          echo "=== clean_ips.json size ==="
+          wc -c data/clean_ips.json || echo "file not found"
+          echo ""
+          echo "=== updated field ==="
+          grep -o '"updated": [0-9]*' data/clean_ips.json | head -1 || echo "no updated"
+          echo ""
+          echo "=== git status ==="
+          git status --short
+
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/clean_ips.json data/history.json
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
           if git diff --staged --quiet; then
-            echo "No changes"
+            echo "❌ No changes to commit"
           else
-            git commit -m "Update IPs [$(date -u +%H:%M)]"
+            git commit -m "🤖 Update IPs [$(date -u +%H:%M)]"
             git push
+            echo "✅ Committed and pushed"
           fi
