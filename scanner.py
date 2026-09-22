@@ -31,6 +31,10 @@ MIN_ONLINE_COUNT = 5
 LONG_TERM_COUNT = 50
 MAX_RESULTS = 2000
 
+# ⚙️ بازه مجاز سال (برای تشخیص ساعت خراب)
+MIN_YEAR = 2025
+MAX_YEAR = 2026
+
 # ============================================================
 # فایل‌ها
 # ============================================================
@@ -45,18 +49,24 @@ HISTORY_FILE = "data/history.json"
 def safe_now():
     """
     زمان فعلی رو برمی‌گردونه.
-    اگه ساعت سیستم خراب بود (خارج از بازه معقول)، از HTTP header می‌خونه.
+    اگه ساعت سیستم خارج از بازه معقول بود، از HTTP header می‌خونه.
     """
     local_ts = int(time.time())
     year = datetime.datetime.utcfromtimestamp(local_ts).year
 
-    # بازه معقول: 2024 تا 2030
-    if 2024 <= year <= 2030:
+    print(f"🔍 safe_now check:")
+    print(f"   local time = {local_ts}")
+    print(f"   local year = {year}")
+    print(f"   allowed    = {MIN_YEAR} - {MAX_YEAR}")
+
+    # ✅ اگه ساعت داخل بازه بود، استفاده کن
+    if MIN_YEAR <= year <= MAX_YEAR:
+        print(f"   ✅ Accepted local time")
         return local_ts
 
-    print(f"⚠️  ساعت سیستم خراب (year={year}) — تلاش برای دریافت از اینترنت...")
+    print(f"   ⚠️  Year {year} is OUT of range! Fetching from internet...")
 
-    # روش ۱: گوگل
+    # ─── روش ۱: Google ───
     try:
         req = urllib.request.Request("https://www.google.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -64,12 +74,17 @@ def safe_now():
             if date_header:
                 dt = parsedate_to_datetime(date_header)
                 fixed_ts = int(dt.timestamp())
-                print(f"✅ زمان درست (Google): {fixed_ts} → {dt}")
-                return fixed_ts
-    except Exception as e:
-        print(f"❌ Google failed: {e}")
+                fixed_year = dt.year
+                print(f"   ✅ Got from Google: {fixed_ts} → {dt}")
 
-    # روش ۲: Cloudflare
+                if MIN_YEAR <= fixed_year <= MAX_YEAR:
+                    return fixed_ts
+                else:
+                    print(f"   ❌ Google year {fixed_year} also out of range!")
+    except Exception as e:
+        print(f"   ❌ Google failed: {e}")
+
+    # ─── روش ۲: Cloudflare ───
     try:
         req = urllib.request.Request("https://cloudflare.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -77,13 +92,32 @@ def safe_now():
             if date_header:
                 dt = parsedate_to_datetime(date_header)
                 fixed_ts = int(dt.timestamp())
-                print(f"✅ زمان درست (Cloudflare): {fixed_ts} → {dt}")
-                return fixed_ts
-    except Exception as e:
-        print(f"❌ Cloudflare failed: {e}")
+                fixed_year = dt.year
+                print(f"   ✅ Got from Cloudflare: {fixed_ts} → {dt}")
 
-    print("⚠️  نتوانستم ساعت درست رو بگیرم — از ساعت سیستم استفاده می‌کنم")
-    return local_ts
+                if MIN_YEAR <= fixed_year <= MAX_YEAR:
+                    return fixed_ts
+    except Exception as e:
+        print(f"   ❌ Cloudflare failed: {e}")
+
+    # ─── روش ۳: HTTPBin API ───
+    try:
+        req = urllib.request.Request("https://worldtimeapi.org/api/ip", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            unixtime = int(data.get("unixtime", 0))
+            if unixtime > 0:
+                fixed_year = datetime.datetime.utcfromtimestamp(unixtime).year
+                print(f"   ✅ Got from WorldTimeAPI: {unixtime}")
+
+                if MIN_YEAR <= fixed_year <= MAX_YEAR:
+                    return unixtime
+    except Exception as e:
+        print(f"   ❌ WorldTimeAPI failed: {e}")
+
+    # ─── همه روش‌ها شکست خورد ───
+    print(f"   🚨 ALL METHODS FAILED — using hardcoded fallback")
+    return int(datetime.datetime(2025, 6, 15, 12, 0, 0).timestamp())
 
 
 # ============================================================
@@ -315,12 +349,9 @@ def main():
     print("=" * 60)
 
     # 🐛 DEBUG CLOCK
-    now_ts = safe_now()
-    print(f"\n🕐 Server time check:")
+    print(f"\n🕐 Initial clock check:")
     print(f"   raw time.time()   = {int(time.time())}")
-    print(f"   safe_now()        = {now_ts}")
-    print(f"   UTC               = {datetime.datetime.utcfromtimestamp(now_ts)}")
-    print(f"   Local             = {datetime.datetime.fromtimestamp(now_ts)}")
+    print(f"   raw UTC           = {datetime.datetime.utcnow()}")
 
     # ۱. بارگذاری
     print("\n[1/7] Loading previous data...")
@@ -452,7 +483,7 @@ def main():
     print("\n[7/7] Saving output...")
 
     output = {
-        "updated": safe_now(),   # 🕐 اینجا هم safe_now
+        "updated": safe_now(),
         "total_tested": len(candidates),
         "online_count": len([x for x in final_list if x["status"] == "online"]),
         "persistent_count": len(persistent),
@@ -474,6 +505,7 @@ def main():
     print(f"   Long-term:        {output['long_term_count']}")
     print(f"   Total unique:     {len(final_list)}")
     print(f"   Updated (unix):   {output['updated']}")
+    print(f"   Updated (UTC):    {datetime.datetime.utcfromtimestamp(output['updated'])}")
     print("=" * 60)
 
 
