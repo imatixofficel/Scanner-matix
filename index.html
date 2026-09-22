@@ -88,6 +88,8 @@
         <p>بررسی IPهای رسمی Cloudflare و نمایش نتایج بر اساس Latency.</p>
       </div>
 
+      <div id="last-update-badge" class="last-update-badge" hidden></div>
+
       <div class="panel scan-controls">
         <div class="field">
           <label for="ip-count">تعداد IP</label>
@@ -104,12 +106,30 @@
         </button>
       </div>
 
+      <!-- 🌍 Earth Loader -->
+      <div id="earth-loader" class="earth-loader" hidden>
+        <div class="earth-wrap">
+          <div class="earth-glow"></div>
+          <div class="earth">
+            <div class="earth-sphere"></div>
+            <div class="earth-shadow"></div>
+          </div>
+          <div class="earth-ring earth-ring-1"></div>
+          <div class="earth-ring earth-ring-2"></div>
+          <div class="earth-ring earth-ring-3"></div>
+        </div>
+        <div class="earth-status">
+          <div class="earth-status-title" id="earth-status-title">در حال دریافت داده‌ها</div>
+          <div class="earth-status-sub" id="earth-status-sub">اتصال به سرور Matix</div>
+        </div>
+      </div>
+
       <div id="scan-progress-wrap" class="scan-progress-wrap" hidden>
         <div class="scan-progress-bar">
           <div id="scan-progress-fill" class="scan-progress-fill"></div>
         </div>
         <div class="scan-progress-meta">
-          <span id="scan-progress-label">در حال دریافت محدوده IP رسمی...</span>
+          <span id="scan-progress-label">در حال دریافت داده‌ها...</span>
           <span id="scan-progress-count">0 / 0</span>
         </div>
       </div>
