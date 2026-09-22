@@ -378,3 +378,38 @@ def main():
             seen.add(r["ip"])
             online_unique.append(r)
   print(f"      Unique in batch: {len(online_unique)}")
+final_list = unique_final[:MAX_RESULTS]
+    print(f"      Final unique IPs: {len(final_list)}")
+
+    # ۷. ذخیره
+    print("\n[7/7] Saving output...")
+
+    output = {
+        "updated": safe_now(),
+        "total_tested": len(candidates),
+        "online_count": len([x for x in final_list if x["status"] == "online"]),
+        "persistent_count": len(persistent),
+        "long_term_count": len(long_term),
+        "total_historical": len(all_known),
+        "fresh_count": len([x for x in final_list if x.get("source") == "fresh"]),
+        "old_count": len([x for x in final_list if x.get("source") == "old"]),
+        "results": final_list,
+        "long_term_ips": long_term[:50],
+        "persistent_ips": persistent[:100]
+    }
+
+    save_json_file(CLEAN_IPS_FILE, output)
+
+    print(f"\n✅ Done.")
+    print(f"   Fresh IPs today:  {output['fresh_count']}")
+    print(f"   Old IPs (still alive): {output['old_count']}")
+    print(f"   Persistent:       {output['persistent_count']}")
+    print(f"   Long-term:        {output['long_term_count']}")
+    print(f"   Total unique:     {len(final_list)}")
+    print(f"   Updated (unix):   {output['updated']}")
+    print(f"   Updated (UTC):    {datetime.datetime.utcfromtimestamp(output['updated'])}")
+    print("=" * 60)
+
+
+if name == "__main__":
+    main()
