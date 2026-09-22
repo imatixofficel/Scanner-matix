@@ -47,14 +47,6 @@
   /* ==========================================================
      ۳. Copy
      ========================================================== */
-  function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text).catch(function () {
-        return fallbackCopy(text);
-      });
-    }
-    return Promise.resolve(fallbackCopy(text));
-  }
   function fallbackCopy(text) {
     var ta = document.createElement('textarea');
     ta.value = text;
@@ -64,6 +56,15 @@
     ta.focus(); ta.select();
     try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        fallbackCopy(text);
+      });
+    }
+    fallbackCopy(text);
+    return Promise.resolve();
   }
 
   /* ==========================================================
@@ -77,19 +78,20 @@
     if (!drawer) return;
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
-    drawerOverlay.classList.add('is-visible');
-    hamburgerBtn.setAttribute('aria-expanded', 'true');
+    if (drawerOverlay) drawerOverlay.classList.add('is-visible');
+    if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'true');
   }
   function closeDrawer() {
     if (!drawer) return;
     drawer.classList.remove('is-open');
     drawer.setAttribute('aria-hidden', 'true');
-    drawerOverlay.classList.remove('is-visible');
-    hamburgerBtn.setAttribute('aria-expanded', 'false');
+    if (drawerOverlay) drawerOverlay.classList.remove('is-visible');
+    if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'false');
   }
   if (hamburgerBtn) {
     hamburgerBtn.addEventListener('click', function () {
-      if (drawer.classList.contains('is-open')) closeDrawer(); else openDrawer();
+      if (drawer.classList.contains('is-open')) closeDrawer();
+      else openDrawer();
     });
   }
   if (drawerOverlay) drawerOverlay.addEventListener('click', closeDrawer);
@@ -110,10 +112,13 @@
   });
 
   /* ==========================================================
-     ۵. Scanner
+     ۵. Scanner + Earth Loader + Last Update
      ========================================================== */
   var startScanBtn    = $('#start-scan-btn');
   var ipCountSelect   = $('#ip-count');
+  var earthLoader     = $('#earth-loader');
+  var earthTitle      = $('#earth-status-title');
+  var earthSub        = $('#earth-status-sub');
   var progressWrap    = $('#scan-progress-wrap');
   var progressFill    = $('#scan-progress-fill');
   var progressLabel   = $('#scan-progress-label');
@@ -122,6 +127,7 @@
   var resultsWrap     = $('#results-wrap');
   var resultsBody     = $('#results-body');
   var resultsSummary  = $('#results-summary');
+  var lastUpdateBadge = $('#last-update-badge');
   var copyBestBtn     = $('#copy-best-btn');
   var copyAllBtn      = $('#copy-all-btn');
 
@@ -139,6 +145,18 @@
     statusMsg.textContent = message;
   }
 
+  function showEarth(title, sub) {
+    if (!earthLoader) return;
+    if (earthTitle) earthTitle.textContent = title || 'در حال دریافت داده‌ها';
+    if (earthSub)   earthSub.textContent   = sub   || 'اتصال به سرور Matix';
+    earthLoader.hidden = false;
+    if (progressWrap) progressWrap.hidden = true;
+  }
+
+  function hideEarth() {
+    if (earthLoader) earthLoader.hidden = true;
+  }
+
   function setProgress(percent, label, doneCount, totalCount) {
     if (!progressWrap) return;
     progressWrap.hidden = false;
@@ -147,6 +165,38 @@
     if (progressCount) progressCount.textContent = doneCount + ' / ' + totalCount;
   }
 
+  /* ---- زمان نسبی ---- */
+  function timeAgo(ts) {
+    var now = Math.floor(Date.now() / 1000);
+    var diff = now - ts;
+    if (diff < 0) diff = 0;
+
+    if (diff < 60)        return 'همین الان';
+    if (diff < 3600)      return Math.floor(diff / 60) + ' دقیقه پیش';
+    if (diff < 86400)     return Math.floor(diff / 3600) + ' ساعت پیش';
+    return Math.floor(diff / 86400) + ' روز پیش';
+  }
+
+  function renderLastUpdate(data) {
+    if (!lastUpdateBadge) return;
+    var ts = data.updated || data.last_updated || 0;
+    if (!ts) { lastUpdateBadge.hidden = true; return; }
+
+    var ago = timeAgo(ts);
+    var diffMin = (Math.floor(Date.now() / 1000) - ts) / 60;
+
+    var cls = 'last-update-badge';
+    if (diffMin > 60 * 24)      cls += ' is-stale';
+    else if (diffMin > 30)      cls += ' is-old';
+
+    lastUpdateBadge.className = cls;
+    lastUpdateBadge.innerHTML =
+      '<span class="dot"></span>' +
+      '<span>آخرین بروزرسانی IPها: <strong>' + ago + '</strong></span>';
+    lastUpdateBadge.hidden = false;
+  }
+
+  /* ---- رندر جدول ---- */
   function renderResults(results) {
     lastResults = results.slice().sort(function (a, b) {
       if (a.long_term && !b.long_term) return -1;
@@ -158,50 +208,68 @@
 
     if (!lastResults.length) {
       setStatus('هیچ IP سالمی پیدا نشد. دوباره امتحان کن.', 'error');
-      resultsWrap.hidden = true;
+      if (resultsWrap) resultsWrap.hidden = true;
       return;
     }
 
-    resultsBody.innerHTML = '';
-    lastResults.forEach(function (item, index) {
-      var tr = document.createElement('tr');
-      var cls = [];
-      if (item.long_term) cls.push('is-long-term');
-      else if (item.persistent) cls.push('is-persistent');
-      if (index < 20) cls.push('is-best');
-      if (cls.length) tr.className = cls.join(' ');
+    if (resultsBody) {
+      resultsBody.innerHTML = '';
+      lastResults.forEach(function (item, index) {
+        var tr = document.createElement('tr');
+        var cls = [];
+        if (item.long_term) cls.push('is-long-term');
+        else if (item.persistent) cls.push('is-persistent');
+        if (index < 20) cls.push('is-best');
+        if (cls.length) tr.className = cls.join(' ');
 
-      var statusPill = item.status === 'online'
-        ? '<span class="status-pill online">online</span>'
-        : '<span class="status-pill offline">' + (item.status || 'unknown') + '</span>';
+        var statusPill = item.status === 'online'
+          ? '<span class="status-pill online">online</span>'
+          : '<span class="status-pill offline">' + (item.status || 'unknown') + '</span>';
 
-      var pingText = item.ms != null ? item.ms + ' ms' : '—';
+        var pingText = item.ms != null ? item.ms + ' ms' : '—';
 
-      tr.innerHTML =
-        '<td>' + (index + 1) + '</td>' +
-        '<td class="ip-cell">' + item.ip + '</td>' +
-        '<td class="ping-cell">' + pingText + '</td>' +
-        '<td>' + statusPill + '</td>' +
-        '<td><button class="copy-row-btn" data-ip="' + item.ip + '">Copy</button></td>';
+        tr.innerHTML =
+          '<td>' + (index + 1) + '</td>' +
+          '<td class="ip-cell">' + item.ip + '</td>' +
+          '<td class="ping-cell">' + pingText + '</td>' +
+          '<td>' + statusPill + '</td>' +
+          '<td><button class="copy-row-btn" data-ip="' + item.ip + '">Copy</button></td>';
 
-      resultsBody.appendChild(tr);
-    });
+        resultsBody.appendChild(tr);
+      });
+    }
 
     var persistentCount = lastResults.filter(function (x) { return x.persistent; }).length;
     var longTermCount   = lastResults.filter(function (x) { return x.long_term; }).length;
-    resultsSummary.textContent =
-      lastResults.length + ' IP | 💎 ' + persistentCount +
-      ' persistent | 👑 ' + longTermCount + ' long-term';
+    if (resultsSummary) {
+      resultsSummary.textContent =
+        lastResults.length + ' IP | 💎 ' + persistentCount +
+        ' persistent | 👑 ' + longTermCount + ' long-term';
+    }
 
-    resultsWrap.hidden = false;
+    if (resultsWrap) resultsWrap.hidden = false;
   }
 
+  /* ---- Start Scan ---- */
   function startScan() {
     if (!startScanBtn) return;
     startScanBtn.disabled = true;
-    resultsWrap.hidden = true;
+    if (resultsWrap) resultsWrap.hidden = true;
     setStatus('', null);
-    setProgress(5, 'در حال دریافت داده‌ها از سرور...', 0, 0);
+
+    showEarth('در حال دریافت داده‌های Cloudflare', 'اتصال به سرور Matix...');
+
+    var subMessages = [
+      'در حال اسکن IPهای کلادفلر...',
+      'بررسی پاسخ‌دهی سرورها...',
+      'محاسبه سرعت و پینگ...',
+      'در حال آماده‌سازی نتایج...'
+    ];
+    var subIdx = 0;
+    var subTimer = setInterval(function () {
+      subIdx = (subIdx + 1) % subMessages.length;
+      if (earthSub) earthSub.textContent = subMessages[subIdx];
+    }, 1400);
 
     var t = Date.now();
     fetch(RESULTS_JSON_URL + '?t=' + t, { cache: 'no-store' })
@@ -210,29 +278,41 @@
         return res.json();
       })
       .then(function (data) {
-        setProgress(50, 'در حال پردازش نتایج...', 0, 0);
-        var limit = parseInt(ipCountSelect.value, 10) || 20;
-        var results = (data.results || data.ips || []).slice(0, limit);
+        clearInterval(subTimer);
 
-        if (!results.length) {
-          setStatus('لیست IP خالی است. لطفاً بعداً تلاش کن.', 'error');
-          progressWrap.hidden = true;
-          startScanBtn.disabled = false;
-          return;
-        }
+        var minDelay = 1800;
+        var elapsed = Date.now() - t;
+        var wait = Math.max(0, minDelay - elapsed);
 
         setTimeout(function () {
-          setProgress(100, 'انجام شد ✅', results.length, results.length);
-          renderResults(results);
-          setTimeout(function () { progressWrap.hidden = true; }, 900);
-          startScanBtn.disabled = false;
-          showToast(results.length + ' IP بارگذاری شد', 'success');
-        }, 300);
+          if (earthTitle) earthTitle.textContent = 'نتایج آماده شد';
+          if (earthSub)   earthSub.textContent   = 'در حال نمایش...';
+
+          setTimeout(function () {
+            hideEarth();
+
+            var limit = parseInt(ipCountSelect.value, 10) || 20;
+            var results = (data.results || data.ips || []).slice(0, limit);
+
+            if (!results.length) {
+              setStatus('لیست IP خالی است. لطفاً بعداً تلاش کن.', 'error');
+              startScanBtn.disabled = false;
+              return;
+            }
+
+            renderLastUpdate(data);
+            renderResults(results);
+            startScanBtn.disabled = false;
+            showToast(results.length + ' IP بارگذاری شد ✅', 'success');
+          }, 600);
+        }, wait);
       })
       .catch(function (err) {
+        clearInterval(subTimer);
+        hideEarth();
         console.error('[Matix] Scan error:', err);
-        setStatus('خطا در دریافت داده‌ها: ' + err.message + ' — فایل data/clean_ips.json را بررسی کن.', 'error');
-        if (progressWrap) progressWrap.hidden = true;
+        setStatus('خطا در دریافت داده‌ها: ' + err.message +
+          ' — فایل data/clean_ips.json را بررسی کن.', 'error');
         startScanBtn.disabled = false;
       });
   }
@@ -273,26 +353,36 @@
     });
   }
 
+  /* ---- Auto-load badge در شروع ---- */
+  (function loadInitialBadge() {
+    fetch(RESULTS_JSON_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data) renderLastUpdate(data);
+      })
+      .catch(function () { /* silent */ });
+  })();
+
   /* ==========================================================
      ۶. Config Builder
      ========================================================== */
-  var configsInput  = $('#configs-input');
-  var ipsInput      = $('#ips-input');
-  var configsCount  = $('#configs-count');
-  var ipsCount      = $('#ips-count');
-  var combineBtn    = $('#combine-btn');
-  var combinedWrap  = $('#combined-wrap');
-  var combinedOutput= $('#combined-output');
+  var configsInput    = $('#configs-input');
+  var ipsInput        = $('#ips-input');
+  var configsCount    = $('#configs-count');
+  var ipsCount        = $('#ips-count');
+  var combineBtn      = $('#combine-btn');
+  var combinedWrap    = $('#combined-wrap');
+  var combinedOutput  = $('#combined-output');
   var combinedSummary = $('#combined-summary');
   var copyCombinedBtn = $('#copy-combined-btn');
 
   function updateCounts() {
-    if (configsCount) {
+    if (configsCount && configsInput) {
       configsCount.textContent = configsInput.value
         .split('\n').map(function (s) { return s.trim(); })
         .filter(Boolean).length;
     }
-    if (ipsCount) {
+    if (ipsCount && ipsInput) {
       ipsCount.textContent = ipsInput.value
         .split('\n').map(function (s) { return s.trim(); })
         .filter(Boolean).length;
@@ -302,9 +392,9 @@
   if (ipsInput)     ipsInput.addEventListener('input', updateCounts);
 
   /**
-   * جایگزینی IP/Host داخل کانفیگ VLESS.
+   * جایگزینی host در کانفیگ VLESS
    * ساختار: vless://uuid@host:port?query#remark
-   * فقط بخش host را عوض می‌کنیم، پورت و بقیه ثابت می‌مانند.
+   * فقط host عوض می‌شه، پورت و بقیه ثابت می‌مونن.
    */
   function replaceHost(configLine, newIp) {
     try {
@@ -317,6 +407,8 @@
   }
 
   function combineConfigs() {
+    if (!configsInput || !ipsInput) return;
+
     var configs = configsInput.value
       .split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     var ips = ipsInput.value
@@ -328,14 +420,11 @@
     var output = [];
     var failed = 0;
 
-    configs.forEach(function (cfg, idx) {
+    configs.forEach(function (cfg) {
       ips.forEach(function (ip) {
         var replaced = replaceHost(cfg, ip);
-        if (replaced) {
-          output.push(replaced);
-        } else {
-          failed++;
-        }
+        if (replaced) output.push(replaced);
+        else failed++;
       });
     });
 
@@ -344,10 +433,12 @@
       return;
     }
 
-    combinedOutput.value = output.join('\n');
-    combinedSummary.textContent = output.length + ' کانفیگ ساخته شد' +
-      (failed ? ' (' + failed + ' نامعتبر نادیده گرفته شد)' : '');
-    combinedWrap.hidden = false;
+    if (combinedOutput) combinedOutput.value = output.join('\n');
+    if (combinedSummary) {
+      combinedSummary.textContent = output.length + ' کانفیگ ساخته شد' +
+        (failed ? ' (' + failed + ' نامعتبر نادیده گرفته شد)' : '');
+    }
+    if (combinedWrap) combinedWrap.hidden = false;
     showToast(output.length + ' کانفیگ ساخته شد ✅', 'success');
   }
 
@@ -355,7 +446,7 @@
 
   if (copyCombinedBtn) {
     copyCombinedBtn.addEventListener('click', function () {
-      if (!combinedOutput.value) return;
+      if (!combinedOutput || !combinedOutput.value) return;
       copyText(combinedOutput.value).then(function () {
         showToast('همه کانفیگ‌ها کپی شدند', 'success');
       });
