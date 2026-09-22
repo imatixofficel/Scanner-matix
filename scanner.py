@@ -9,6 +9,7 @@ import urllib.request
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+
 # ============================================================
 # تنظیمات
 # ============================================================
@@ -25,78 +26,62 @@ MAX_WORKERS = 200
 TIMEOUT_TCP = 3
 TIMEOUT_HTTP = 5
 
-# ⚙️ تنظیمات ماندگاری
 HISTORY_DAYS = 30
 MIN_ONLINE_COUNT = 5
 LONG_TERM_COUNT = 50
 MAX_RESULTS = 2000
 
-# ============================================================
-# فایل‌ها
-# ============================================================
 ALL_IPS_FILE = "data/all_ips.json"
 CLEAN_IPS_FILE = "data/clean_ips.json"
 HISTORY_FILE = "data/history.json"
 
 
 # ============================================================
-# 🕐 ساعت مطمئن
+# ساعت مطمئن
 # ============================================================
 def safe_now():
-    """
-    زمان فعلی رو برمی‌گردونه.
-    اگه ساعت سیستم خراب بود، از HTTP header می‌خونه.
-    """
     local_ts = int(time.time())
     year = datetime.datetime.utcfromtimestamp(local_ts).year
 
-    # ✅ اگه سال بین 2024 تا 2030 بود → استفاده کن
     if 2024 <= year <= 2030:
         return local_ts
 
-    print(f"⚠️  System clock is wrong (year={year}) — fetching from internet...")
+    print(f"WARN: System clock wrong (year={year}) - fetching from internet...")
 
-    # ─── روش ۱: Google ───
     try:
         req = urllib.request.Request("https://www.google.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
             date_header = resp.headers.get("Date")
             if date_header:
                 dt = parsedate_to_datetime(date_header)
-                fixed_ts = int(dt.timestamp())
-                print(f"✅ Got from Google: {dt}")
-                return fixed_ts
+                print(f"OK: Got from Google: {dt}")
+                return int(dt.timestamp())
     except Exception as e:
-        print(f"❌ Google failed: {e}")
+        print(f"FAIL: Google: {e}")
 
-    # ─── روش ۲: Cloudflare ───
     try:
         req = urllib.request.Request("https://cloudflare.com", method="HEAD")
         with urllib.request.urlopen(req, timeout=5) as resp:
             date_header = resp.headers.get("Date")
             if date_header:
                 dt = parsedate_to_datetime(date_header)
-                fixed_ts = int(dt.timestamp())
-                print(f"✅ Got from Cloudflare: {dt}")
-                return fixed_ts
+                print(f"OK: Got from Cloudflare: {dt}")
+                return int(dt.timestamp())
     except Exception as e:
-        print(f"❌ Cloudflare failed: {e}")
+        print(f"FAIL: Cloudflare: {e}")
 
-    # ─── روش ۳: HTTPBin ───
     try:
         req = urllib.request.Request("https://httpbin.org/headers", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             date_header = resp.headers.get("Date")
             if date_header:
                 dt = parsedate_to_datetime(date_header)
-                fixed_ts = int(dt.timestamp())
-                print(f"✅ Got from HTTPBin: {dt}")
-                return fixed_ts
+                print(f"OK: Got from HTTPBin: {dt}")
+                return int(dt.timestamp())
     except Exception as e:
-        print(f"❌ HTTPBin failed: {e}")
+        print(f"FAIL: HTTPBin: {e}")
 
-    # ─── fallback ───
-    print(f"🚨 All methods failed — using fallback date")
+    print("WARN: All methods failed - using fallback date")
     return int(datetime.datetime(2025, 6, 15, 12, 0, 0).timestamp())
 
 
@@ -164,7 +149,7 @@ def test_tcp_tls(ip):
 
 
 # ============================================================
-# مدیریت فایل‌ها
+# فایل‌ها
 # ============================================================
 def load_json_file(path, default):
     try:
@@ -194,13 +179,10 @@ def save_all_ips(all_ips_data):
 def update_all_ips(all_ips_data, new_results):
     now = safe_now()
     ips = all_ips_data.get("ips", {})
-
     for r in new_results:
         if r["status"] != "online":
             continue
-
         ip = r["ip"]
-
         if ip in ips:
             entry = ips[ip]
             entry["last_seen"] = now
@@ -216,7 +198,6 @@ def update_all_ips(all_ips_data, new_results):
                 "seen_count": 1,
                 "status": "online"
             }
-
     all_ips_data["ips"] = ips
     all_ips_data["last_updated"] = now
     return all_ips_data
@@ -226,12 +207,10 @@ def cleanup_all_ips(all_ips_data, max_days=365):
     now = safe_now()
     cutoff = now - (max_days * 86400)
     ips = all_ips_data.get("ips", {})
-
     cleaned = {}
     for ip, entry in ips.items():
         if entry.get("last_seen", 0) >= cutoff:
             cleaned[ip] = entry
-
     all_ips_data["ips"] = cleaned
     return all_ips_data
 
@@ -251,11 +230,9 @@ def update_history(history, results):
     now = safe_now()
     cutoff = now - (HISTORY_DAYS * 86400)
     ips = history.get("ips", {})
-
     for r in results:
         if r["status"] != "online":
             continue
-
         ip = r["ip"]
         if ip not in ips:
             ips[ip] = {
@@ -266,7 +243,6 @@ def update_history(history, results):
                 "colo": None,
                 "history": []
             }
-
         entry = ips[ip]
         entry["last_seen"] = now
         entry["online_count"] = entry.get("online_count", 0) + 1
@@ -274,15 +250,12 @@ def update_history(history, results):
         entry["colo"] = r.get("colo")
         entry["history"].append(now)
         entry["history"] = [t for t in entry["history"] if t > cutoff]
-
-    # پاک کردن IPهای قدیمی
     for ip in list(ips.keys()):
         entry = ips[ip]
         if entry["last_seen"] < cutoff:
             del ips[ip]
         else:
             entry["online_count"] = len(entry["history"])
-
     history["ips"] = ips
     history["last_updated"] = now
     return history
@@ -325,25 +298,24 @@ def get_long_term_ips(history):
 # ============================================================
 def main():
     print("=" * 60)
-    print("Matix Scanner v3 — Daily Refresh + Persistent + No Duplicates")
+    print("Matix Scanner v3 - Daily Refresh + Persistent + No Duplicates")
     print("=" * 60)
 
-    # 🕐 چک ساعت
     now_ts = safe_now()
-    print(f"\n🕐 Time check:")
+    print(f"\nTime check:")
     print(f"   raw time.time()  = {int(time.time())}")
     print(f"   safe_now()       = {now_ts}")
     print(f"   UTC              = {datetime.datetime.utcfromtimestamp(now_ts)}")
     print(f"   Year             = {datetime.datetime.utcfromtimestamp(now_ts).year}")
 
-    # ۱. بارگذاری
+    # 1. بارگذاری
     print("\n[1/7] Loading previous data...")
     all_ips_data = load_all_ips()
     history = load_history()
     prev_ip_count = len(all_ips_data.get("ips", {}))
     print(f"      Previous IPs in history: {prev_ip_count}")
 
-    # ۲. تولید لیست
+    # 2. تولید لیست
     print(f"\n[2/7] Generating fresh candidate IPs...")
     candidates_set = set()
     for cidr in CF_RANGES:
@@ -351,7 +323,7 @@ def main():
     candidates = list(candidates_set)
     print(f"      Generated {len(candidates)} unique candidates")
 
-    # ۳. تست
+    # 3. تست
     print(f"\n[3/7] Testing {len(candidates)} IPs (TCP+TLS)...")
     start = time.time()
     results = []
@@ -362,14 +334,15 @@ def main():
             results.append(f.result())
             done += 1
             if done % 500 == 0:
-                print(f"      Progress: {done}/{len(candidates)} ({done*100//len(candidates)}%)")
+                pct = done * 100 // len(candidates)
+                print(f"      Progress: {done}/{len(candidates)} ({pct}%)")
 
     print(f"      Stage 1 complete in {time.time()-start:.1f}s")
 
     online_1 = [r for r in results if r["status"] == "online"]
     print(f"      Online: {len(online_1)}")
 
-    # ۴. حذف تکراری
+    # 4. حذف تکراری
     print("\n[4/7] Deduplicating current batch...")
     seen = set()
     online_unique = []
@@ -377,11 +350,87 @@ def main():
         if r["ip"] not in seen:
             seen.add(r["ip"])
             online_unique.append(r)
-  print(f"      Unique in batch: {len(online_unique)}")
-final_list = unique_final[:MAX_RESULTS]
+    print(f"      Unique in batch: {len(online_unique)}")
+
+    # 5. به‌روزرسانی
+    print("\n[5/7] Updating all_ips and history...")
+    all_ips_data = update_all_ips(all_ips_data, online_unique)
+    all_ips_data = cleanup_all_ips(all_ips_data, max_days=365)
+    save_all_ips(all_ips_data)
+    print(f"      Total historical IPs: {len(all_ips_data['ips'])}")
+
+    history = update_history(history, online_unique)
+    save_history(history)
+    persistent = get_persistent_ips(history)
+    long_term = get_long_term_ips(history)
+    print(f"      Persistent IPs (>={MIN_ONLINE_COUNT}): {len(persistent)}")
+    print(f"      Long-term IPs (>={LONG_TERM_COUNT}): {len(long_term)}")
+
+    # 6. خروجی
+    print("\n[6/7] Building final output (fresh + old, no duplicates)...")
+
+    fresh_ips = {r["ip"]: r for r in online_unique}
+    now = safe_now()
+    all_known = all_ips_data.get("ips", {})
+    all_candidates = {}
+
+    for ip, r in fresh_ips.items():
+        all_candidates[ip] = {
+            "ip": ip,
+            "ms": r["ms"],
+            "status": "online",
+            "colo": r.get("colo"),
+            "source": "fresh"
+        }
+
+    for ip, entry in all_known.items():
+        if ip not in all_candidates:
+            last_seen_hours = (now - entry.get("last_seen", 0)) / 3600
+            all_candidates[ip] = {
+                "ip": ip,
+                "ms": entry.get("last_ms"),
+                "status": "online",
+                "colo": entry.get("colo"),
+                "source": "old",
+                "last_seen_hours_ago": round(last_seen_hours, 1)
+            }
+
+    persistent_map = {p["ip"]: p for p in persistent}
+    long_term_map = {l["ip"]: l for l in long_term}
+
+    final_list = []
+    for ip, item in all_candidates.items():
+        if ip in long_term_map:
+            item["persistent"] = True
+            item["long_term"] = True
+            item["online_count"] = long_term_map[ip]["online_count"]
+        elif ip in persistent_map:
+            item["persistent"] = True
+            item["long_term"] = False
+            item["online_count"] = persistent_map[ip]["online_count"]
+        else:
+            item["persistent"] = False
+            item["long_term"] = False
+            item["online_count"] = history.get("ips", {}).get(ip, {}).get("online_count", 1)
+        final_list.append(item)
+
+    final_list.sort(key=lambda x: (
+        not x.get("long_term", False),
+        not x.get("persistent", False),
+        x.get("ms") or 99999
+    ))
+
+    seen = set()
+    unique_final = []
+    for item in final_list:
+        if item["ip"] not in seen:
+            seen.add(item["ip"])
+            unique_final.append(item)
+
+    final_list = unique_final[:MAX_RESULTS]
     print(f"      Final unique IPs: {len(final_list)}")
 
-    # ۷. ذخیره
+    # 7. ذخیره
     print("\n[7/7] Saving output...")
 
     output = {
@@ -400,7 +449,7 @@ final_list = unique_final[:MAX_RESULTS]
 
     save_json_file(CLEAN_IPS_FILE, output)
 
-    print(f"\n✅ Done.")
+    print(f"\nDONE.")
     print(f"   Fresh IPs today:  {output['fresh_count']}")
     print(f"   Old IPs (still alive): {output['old_count']}")
     print(f"   Persistent:       {output['persistent_count']}")
@@ -411,5 +460,5 @@ final_list = unique_final[:MAX_RESULTS]
     print("=" * 60)
 
 
-if name == "__main__":
+if __name__ == "__main__":
     main()
