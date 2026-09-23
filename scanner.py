@@ -5,6 +5,7 @@ import time
 import random
 import os
 import datetime
+import re
 import urllib.request
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,6 +35,7 @@ MAX_RESULTS = 2000
 ALL_IPS_FILE = "data/all_ips.json"
 CLEAN_IPS_FILE = "data/clean_ips.json"
 HISTORY_FILE = "data/history.json"
+README_FILE = "README.md"
 
 
 # ============================================================
@@ -294,6 +296,63 @@ def get_long_term_ips(history):
 
 
 # ============================================================
+# 📝 آپدیت README — جلوگیری از خواب GitHub Actions
+# ============================================================
+def update_readme(output, persistent_count, long_term_count):
+    """
+    یه بلاک آمار زنده به README اضافه/آپدیت می‌کنه.
+    هر بار که اجرا می‌شه، این بلاک عوض می‌شه → commit جدید می‌شه.
+    """
+    marker_start = "<!-- AUTO_UPDATE_START -->"
+    marker_end = "<!-- AUTO_UPDATE_END -->"
+
+    try:
+        now_str = datetime.datetime.utcfromtimestamp(output['updated']).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        new_block = (
+            marker_start + "\n"
+            "### 🤖 Matix Live Status\n\n"
+            "| 📊 آمار | مقدار |\n"
+            "|---|---|\n"
+            "| 🕐 آخرین اسکن | `" + now_str + "` |\n"
+            "| ✅ IPهای آنلاین | `" + str(output['online_count']) + "` |\n"
+            "| 💎 ماندگار | `" + str(persistent_count) + "` |\n"
+            "| 👑 بلندمدت | `" + str(long_term_count) + "` |\n"
+            "| 🔄 کل تست‌شده | `" + str(output['total_tested']) + "` |\n"
+            "| 📦 تاریخی | `" + str(output['total_historical']) + "` |\n"
+            "| 🌐 بروزرسانی خودکار | هر ۱۵ دقیقه |\n"
+            + marker_end
+        )
+
+        if os.path.exists(README_FILE):
+            with open(README_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+        else:
+            content = "# Matix Scanner\n\n"
+
+        if marker_start in content and marker_end in content:
+            pattern = re.compile(
+                re.escape(marker_start) + r".*?" + re.escape(marker_end),
+                re.DOTALL
+            )
+            content = pattern.sub(new_block, content)
+            action = "updated"
+        else:
+            if not content.endswith("\n"):
+                content += "\n"
+            content += "\n" + new_block + "\n"
+            action = "added"
+
+        with open(README_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        print(f"OK: README {action} with live stats")
+
+    except Exception as e:
+        print(f"WARN: Failed to update README: {e}")
+
+
+# ============================================================
 # اصلی
 # ============================================================
 def main():
@@ -448,6 +507,9 @@ def main():
     }
 
     save_json_file(CLEAN_IPS_FILE, output)
+
+    # 📝 آپدیت README
+    update_readme(output, len(persistent), len(long_term))
 
     print(f"\nDONE.")
     print(f"   Fresh IPs today:  {output['fresh_count']}")
