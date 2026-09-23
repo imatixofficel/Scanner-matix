@@ -192,9 +192,3 @@ Connect with me
 | 📦 تاریخی | `10297` |
 | 🌐 بروزرسانی خودکار | هر ۱۵ دقیقه |
 <!-- AUTO_UPDATE_END -->
----
-
-<!-- AUTO_UPDATE_START -->
-### 🤖 Matix Live Status
-Last scan: waiting for first run...
-<!-- AUTO_UPDATE_END -->
