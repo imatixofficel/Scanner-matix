@@ -14,7 +14,7 @@ Matix Scanner is a simple, free tool that finds working Cloudflare IPs for your 
 
 It runs quietly in the background every 10 minutes, tests thousands of IPs with real TCP+TLS handshakes and HTTP requests, checks their real download speed, and keeps only the ones that are actually alive and fast.
 
-No fake data. No duplicates. No API keys. Just clean, tested IPs.
+No fake data. No duplicates. No API keys. Just clean, tested IPs..
 
 ---
 
