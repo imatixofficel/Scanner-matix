@@ -5,10 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Matix — Cloudflare IP Scanner &amp; Config Builder</title>
 <meta name="description" content="ابزار Matix برای بررسی واقعی IPهای رسمی Cloudflare و ساخت دسته‌ای کانفیگ‌های VLESS.">
-<link rel="icon" href="logo.png" type="image/png">
+<meta name="theme-color" content="#08070f">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Vazirmatn:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,20 +21,20 @@
     <p class="loading-bismillah">به نام خدا</p>
     <div class="loading-logo-wrap">
       <div class="loading-glow"></div>
-      <img src="logo.png" alt="Matix" class="loading-logo" width="72" height="72">
+      <img src="logo.png" alt="Matix" class="loading-logo" width="112" height="112">
     </div>
     <svg class="loading-word" viewBox="0 0 300 78" xmlns="http://www.w3.org/2000/svg" aria-label="Matix">
       <defs>
         <linearGradient id="matix-grad" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stop-color="#7C3AED"/>
-          <stop offset="100%" stop-color="#C4B5FD"/>
+          <stop offset="0%" stop-color="#8B5CF6"/>
+          <stop offset="100%" stop-color="#E9DDFF"/>
         </linearGradient>
         <clipPath id="matix-clip">
           <rect id="matix-clip-rect" x="0" y="78" width="300" height="0"/>
         </clipPath>
       </defs>
-      <text x="150" y="58" text-anchor="middle" font-family="Manrope, sans-serif" font-weight="800" font-size="56" letter-spacing="2" fill="none" stroke="#E4D9FC" stroke-width="1">Matix</text>
-      <text x="150" y="58" text-anchor="middle" font-family="Manrope, sans-serif" font-weight="800" font-size="56" letter-spacing="2" fill="url(#matix-grad)" clip-path="url(#matix-clip)">Matix</text>
+      <text x="150" y="58" text-anchor="middle" font-family="Sora, sans-serif" font-weight="800" font-size="56" letter-spacing="2" fill="none" stroke="#E4D9FC" stroke-width="1">Matix</text>
+      <text x="150" y="58" text-anchor="middle" font-family="Sora, sans-serif" font-weight="800" font-size="56" letter-spacing="2" fill="url(#matix-grad)" clip-path="url(#matix-clip)">Matix</text>
     </svg>
     <div class="loading-bar">
       <span class="loading-bar-fill"></span>
@@ -89,6 +91,29 @@
       </div>
 
       <div id="last-update-badge" class="last-update-badge" hidden></div>
+
+      <div id="stat-grid" class="stat-grid" hidden>
+        <div class="stat-card">
+          <div class="stat-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>Tested</div>
+          <div class="stat-value" id="stat-tested">0</div>
+          <div class="stat-sub">Total IPs scanned</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l5 5L20 7"/></svg>Online</div>
+          <div class="stat-value" id="stat-online">0</div>
+          <div class="stat-sub">Alive right now</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>Persistent</div>
+          <div class="stat-value" id="stat-persistent">0</div>
+          <div class="stat-sub">Stable over time</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Long-term</div>
+          <div class="stat-value" id="stat-longterm">0</div>
+          <div class="stat-sub">Alive for days</div>
+        </div>
+      </div>
 
       <div class="panel scan-controls">
         <div class="field">

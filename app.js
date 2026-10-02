@@ -22,14 +22,14 @@
       }, 650);
     }
     if (document.readyState === 'complete') {
-      setTimeout(closeSplash, 1200);
+      setTimeout(closeSplash, 2800);
     } else {
       window.addEventListener('load', function () {
-        setTimeout(closeSplash, 1200);
+        setTimeout(closeSplash, 2800);
       });
     }
-    setTimeout(closeSplash, 2500);
-    setTimeout(closeSplash, 6000);
+    setTimeout(closeSplash, 4000);
+    setTimeout(closeSplash, 7000);
   })();
 
   /* ==========================================================
@@ -248,6 +248,27 @@
       });
   }
 
+  /* ---- کارت‌های آمار ---- */
+  function renderStats(data) {
+    var grid = document.getElementById('stat-grid');
+    if (!grid || !data) return;
+    function fmt(n) {
+      n = Number(n) || 0;
+      try { return n.toLocaleString('en-US'); } catch (e) { return String(n); }
+    }
+    var map = {
+      'stat-tested': data.total_tested,
+      'stat-online': data.online_count,
+      'stat-persistent': data.persistent_count,
+      'stat-longterm': data.long_term_count
+    };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = fmt(map[id]);
+    });
+    grid.hidden = false;
+  }
+
   /* ---- رندر جدول ---- */
   function renderResults(results) {
     lastResults = results.slice().sort(function (a, b) {
@@ -353,6 +374,7 @@
             }
 
             renderLastUpdate(data);
+            renderStats(data);
             renderResults(results);
             startScanBtn.disabled = false;
             showToast(results.length + ' IP بارگذاری شد ✅', 'success');
