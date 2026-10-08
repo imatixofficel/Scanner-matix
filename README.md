@@ -94,9 +94,22 @@ python matix.py --source fastly --count 600 --top 20 --diverse --save ips.txt --
 
 README در هر اجرا timestamp جدید می‌گیرد تا تغییر repository ثبت شود:
 
-`<!-- AUTO_UPDATE_START -->`
+`<!-- AUTO_UPDATE_START -->
+### 🤖 Matix Live Status
 
-`<!-- AUTO_UPDATE_END -->`
+| منبع | آنلاین | کل تست‌شده |
+|---|---:|---:|
+| ⚡ فستلی | 68 | 537 |
+| ☁️ کلادفلر | 17 | 64 |
+| 🖥️ Railway | 3 | 3 |
+| 🛡️ VPS دستی | 0 | 0 |
+| ✍️ دستی | 0 | 0 |
+
+- 🕐 آخرین اسکن: `2026-10-08 11:28:57 UTC`
+- ⚡ سقف latency: `1000 ms`
+- 🔐 اعتبارسنجی: TCP + TLS + HTTP
+- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
+<!-- AUTO_UPDATE_END -->`
 
 ## custom_ips.txt
 
@@ -148,13 +161,13 @@ Scanner-matix/
 
 | منبع | آنلاین | کل تست‌شده |
 |---|---:|---:|
-| ⚡ فستلی | 0 | 0 |
-| ☁️ کلادفلر | 0 | 0 |
-| 🖥️ Railway | 0 | 0 |
+| ⚡ فستلی | 68 | 537 |
+| ☁️ کلادفلر | 17 | 64 |
+| 🖥️ Railway | 3 | 3 |
 | 🛡️ VPS دستی | 0 | 0 |
 | ✍️ دستی | 0 | 0 |
 
-- 🕐 آخرین اسکن: `not scanned yet`
+- 🕐 آخرین اسکن: `2026-10-08 11:28:57 UTC`
 - ⚡ سقف latency: `1000 ms`
 - 🔐 اعتبارسنجی: TCP + TLS + HTTP
 - ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
