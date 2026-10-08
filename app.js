@@ -272,6 +272,8 @@
   /* ---- رندر جدول ---- */
   function renderResults(results) {
     lastResults = results.slice().sort(function (a, b) {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
       if (a.long_term && !b.long_term) return -1;
       if (!a.long_term && b.long_term) return 1;
       if (a.persistent && !b.persistent) return -1;
@@ -301,9 +303,9 @@
 
         var pingText = item.ms != null ? item.ms + ' ms' : '—';
 
-        tr.innerHTML =
-          var sourceText = (item.source_emoji || '✍️') + ' ' +
-          (item.source_name || item.source || 'نامشخص');
+        var sourceText = (item.pinned ? '📌 ' : '') + (item.source_emoji || '✍️') + ' ' +
+          (item.source_name || item.source || 'نامشخص') +
+          (item.colo ? ' · ' + item.colo + (item.country ? ' (' + item.country + ')' : '') : '');
 
         tr.innerHTML =
           '<td>' + (index + 1) + '</td>' +
@@ -322,7 +324,7 @@
     if (resultsSummary) {
       resultsSummary.textContent =
         lastResults.length + ' IP | 💎 ' + persistentCount +
-        ' persistent | 👑 ' + longTermCount + ' long-term | 🔐 TCP+TLS+HTTP';
+        ' persistent | 👑 ' + longTermCount + ' long-term | 🔐 TCP+TLS+HTTP+CDN';
     }
 
     if (resultsWrap) resultsWrap.hidden = false;

@@ -1,0 +1,20 @@
+# Matix Scanner - trusted / pinned IPs
+# These IPs are re-tested on EVERY scan and are always shown first (marked as pinned)
+# when they pass: TCP + TLS + HTTP + CDN fingerprint + latency limit.
+# They are well-known anycast addresses inside the official Cloudflare / Fastly ranges.
+# Being listed here is not a guarantee: only the ones that pass the latest scan are published.
+#
+# Format:  IP,source        (source = cloudflare | fastly)
+
+# Cloudflare
+1.1.1.1,cloudflare
+1.0.0.1,cloudflare
+104.16.132.229,cloudflare
+172.67.74.152,cloudflare
+
+# Fastly
+151.101.1.140,fastly
+151.101.65.140,fastly
+151.101.129.140,fastly
+151.101.193.140,fastly
+199.232.69.194,fastly

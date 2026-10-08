@@ -1,5 +1,5 @@
 """
-Matix Scanner - Multi-source, VPN-oriented IP quality scanner.
+Matix Scanner 4.1 - Multi-source, VPN-oriented IP quality scanner.
 
 Only standard-library modules are used.
 The scanner samples small, controlled portions of officially published
@@ -30,10 +30,10 @@ from typing import Any
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT, "data")
 CLEAN_FILE = os.path.join(DATA_DIR, "clean_ips.json")
-ALL_FILE = os.path.join(DATA_DIR, "all_ips.json")
-HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 README_FILE = os.path.join(ROOT, "README.md")
 CUSTOM_FILE = os.path.join(ROOT, "custom_ips.txt")
+TRUSTED_FILE = os.path.join(ROOT, "trusted_ips.txt")
+PORT = 443
 
 MAX_LATENCY_MS = 1000
 TCP_TIMEOUT = 2.5
@@ -41,7 +41,7 @@ TLS_TIMEOUT = 3.5
 HTTP_TIMEOUT = 4.0
 PROBES = 2
 MAX_WORKERS = 120
-HISTORY_DAYS = 30
+PREV_RECHECK = 250  # previous winners that are re-tested on every run
 PERSISTENT_COUNT = 5
 LONG_TERM_COUNT = 30
 MAX_RESULTS = 1500
@@ -52,6 +52,66 @@ DEFAULT_SAMPLE_LIMITS = {
     "fastly": 500,
     "railway": 30,
     "custom": 1000,
+}
+
+# Built-in snapshot of the officially published ranges. It is used ONLY when the
+# official API cannot be reached (blocked network, outage). Every candidate is
+# still verified with a CDN fingerprint, so a stale range simply fails the test.
+FALLBACK_RANGES = {
+    "cloudflare": [
+        "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+        "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+        "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+        "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    ],
+    "fastly": [
+        "23.235.32.0/20", "43.249.72.0/22", "103.244.50.0/24", "103.245.222.0/23",
+        "103.245.224.0/24", "104.156.80.0/20", "140.248.64.0/18", "140.248.128.0/17",
+        "146.75.0.0/17", "151.101.0.0/16", "157.52.64.0/18", "167.82.0.0/17",
+        "167.82.128.0/20", "167.82.160.0/20", "167.82.224.0/20", "172.111.64.0/18",
+        "185.31.16.0/22", "199.27.72.0/21", "199.232.0.0/16",
+    ],
+}
+
+# IATA-style location codes used by Cloudflare (cf-ray) and Fastly (x-served-by).
+COLO_COUNTRY = {
+    # North America
+    "IAD": "USA", "ATL": "USA", "BOS": "USA", "ORD": "USA", "DFW": "USA", "DEN": "USA",
+    "LAX": "USA", "SJC": "USA", "SEA": "USA", "MIA": "USA", "EWR": "USA", "LGA": "USA",
+    "JFK": "USA", "PDX": "USA", "PHX": "USA", "SLC": "USA", "MSP": "USA", "DTW": "USA",
+    "CLT": "USA", "MCI": "USA", "IAH": "USA", "LAS": "USA", "BNA": "USA", "CMH": "USA",
+    "PIT": "USA", "TPA": "USA", "SAN": "USA", "SMF": "USA", "OMA": "USA", "STL": "USA",
+    "BUF": "USA", "RIC": "USA", "PHL": "USA", "HNL": "USA", "ANC": "USA", "CHI": "USA",
+    "YYZ": "Canada", "YUL": "Canada", "YVR": "Canada", "YYC": "Canada", "YOW": "Canada",
+    "MEX": "Mexico", "QRO": "Mexico", "GDL": "Mexico",
+    # Europe
+    "LHR": "UK", "LON": "UK", "MAN": "UK", "EDI": "UK", "LCY": "UK", "DUB": "Ireland",
+    "FRA": "Germany", "HAM": "Germany", "DUS": "Germany", "MUC": "Germany", "BER": "Germany", "TXL": "Germany",
+    "AMS": "Netherlands", "CDG": "France", "PAR": "France", "MRS": "France",
+    "MAD": "Spain", "BCN": "Spain", "LIS": "Portugal", "MXP": "Italy", "LIN": "Italy",
+    "FCO": "Italy", "VIE": "Austria", "ZRH": "Switzerland", "GVA": "Switzerland",
+    "ARN": "Sweden", "CPH": "Denmark", "OSL": "Norway", "HEL": "Finland", "BRU": "Belgium",
+    "WAW": "Poland", "PRG": "Czechia", "BUD": "Hungary", "OTP": "Romania", "SOF": "Bulgaria",
+    "ATH": "Greece", "IST": "Turkey", "KBP": "Ukraine", "RIX": "Latvia", "TLL": "Estonia",
+    "VNO": "Lithuania", "LUX": "Luxembourg", "SVO": "Russia", "LED": "Russia",
+    # Middle East / Caucasus / Central Asia
+    "DXB": "UAE", "AUH": "UAE", "FJR": "UAE", "DOH": "Qatar", "KWI": "Kuwait", "BAH": "Bahrain",
+    "MCT": "Oman", "RUH": "Saudi Arabia", "JED": "Saudi Arabia", "TLV": "Israel", "AMM": "Jordan",
+    "BEY": "Lebanon", "BGW": "Iraq", "EVN": "Armenia", "TBS": "Georgia", "GYD": "Azerbaijan",
+    "ALA": "Kazakhstan", "TAS": "Uzbekistan",
+    # Asia / Oceania
+    "SIN": "Singapore", "HKG": "Hong Kong", "NRT": "Japan", "HND": "Japan", "KIX": "Japan",
+    "ICN": "South Korea", "TPE": "Taiwan", "BOM": "India", "DEL": "India", "MAA": "India",
+    "BLR": "India", "HYD": "India", "CCU": "India", "KUL": "Malaysia", "BKK": "Thailand",
+    "CGK": "Indonesia", "MNL": "Philippines", "SGN": "Vietnam", "HAN": "Vietnam", "DAC": "Bangladesh",
+    "KHI": "Pakistan", "ISB": "Pakistan", "CMB": "Sri Lanka", "KTM": "Nepal",
+    "SYD": "Australia", "MEL": "Australia", "PER": "Australia", "BNE": "Australia",
+    "ADL": "Australia", "CBR": "Australia", "AKL": "New Zealand",
+    # South America / Africa
+    "GRU": "Brazil", "GIG": "Brazil", "EZE": "Argentina", "SCL": "Chile", "BOG": "Colombia",
+    "LIM": "Peru", "PTY": "Panama", "UIO": "Ecuador", "MVD": "Uruguay",
+    "JNB": "South Africa", "CPT": "South Africa", "DUR": "South Africa", "CAI": "Egypt",
+    "LOS": "Nigeria", "NBO": "Kenya", "ACC": "Ghana", "CMN": "Morocco", "TUN": "Tunisia",
 }
 
 SOURCE_META = {
@@ -108,7 +168,7 @@ def save_json(path: str, data: Any) -> None:
 def fetch_json(url: str, timeout: float = 10.0) -> dict[str, Any]:
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "Matix-Scanner/4.0 (+https://github.com/imatixofficel/Scanner-matix)"},
+        headers={"User-Agent": "Matix-Scanner/4.1 (+https://github.com/imatixofficel/Scanner-matix)"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
@@ -161,14 +221,26 @@ def sample_networks(cidrs: list[str], limit: int) -> list[str]:
     return list(result)
 
 
+def get_ranges(source: str) -> list[str]:
+    """Official ranges first; built-in snapshot only if the API is unreachable."""
+    try:
+        if source == "cloudflare":
+            ranges = fetch_json(SOURCE_URLS["cloudflare"]).get("result", {}).get("ipv4_cidrs", [])
+        else:
+            ranges = fetch_json(SOURCE_URLS["fastly"]).get("addresses", [])
+        if ranges:
+            return ranges
+    except Exception as exc:  # network blocked, HTTP error, bad JSON ...
+        print(f"[WARN] {source}: official range list unavailable ({exc}); using built-in snapshot")
+    return list(FALLBACK_RANGES[source])
+
+
 def get_cloudflare() -> list[str]:
-    data = fetch_json(SOURCE_URLS["cloudflare"])
-    return data.get("result", {}).get("ipv4_cidrs", [])
+    return get_ranges("cloudflare")
 
 
 def get_fastly() -> list[str]:
-    data = fetch_json(SOURCE_URLS["fastly"])
-    return data.get("addresses", [])
+    return get_ranges("fastly")
 
 
 def resolve_hosts(hosts: tuple[str, ...]) -> list[str]:
@@ -182,18 +254,18 @@ def resolve_hosts(hosts: tuple[str, ...]) -> list[str]:
     return sorted(out)
 
 
-def parse_custom_file() -> list[dict[str, str]]:
+def parse_ip_file(path: str, pinned: bool = False) -> list[dict[str, Any]]:
     """
-    Supported:
+    Supported lines:
       1.1.1.1
       1.1.1.1,cloudflare
       1.1.1.1 vps
     Blank lines and # comments are ignored.
     """
-    out: list[dict[str, str]] = []
-    if not os.path.exists(CUSTOM_FILE):
+    out: list[dict[str, Any]] = []
+    if not os.path.exists(path):
         return out
-    with open(CUSTOM_FILE, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -206,13 +278,27 @@ def parse_custom_file() -> list[dict[str, str]]:
             source = parts[1].lower() if len(parts) > 1 else "custom"
             if source not in SOURCE_META:
                 source = "custom"
-            out.append({"ip": ip, "source": source})
+            item: dict[str, Any] = {"ip": ip, "source": source}
+            if pinned:
+                item["pinned"] = True
+            out.append(item)
     return out
 
 
-def candidates_for(source: str, limit: int) -> list[dict[str, str]]:
+def parse_custom_file() -> list[dict[str, Any]]:
+    return parse_ip_file(CUSTOM_FILE)
+
+
+def parse_trusted_file() -> list[dict[str, Any]]:
+    return parse_ip_file(TRUSTED_FILE, pinned=True)
+
+
+def candidates_for(source: str, limit: int) -> list[dict[str, Any]]:
     if source == "custom":
         return parse_custom_file()[:limit]
+
+    if source == "trusted":
+        return parse_trusted_file()[:limit]
 
     if source == "cloudflare":
         return [{"ip": ip, "source": "cloudflare"} for ip in sample_networks(get_cloudflare(), limit)]
@@ -236,7 +322,7 @@ def candidates_for(source: str, limit: int) -> list[dict[str, str]]:
             "railway": max(1, int(limit * 0.05)),
             "custom": max(1, limit - int(limit * 0.75)),
         }
-        groups = []
+        groups: list[dict[str, Any]] = []
         for name, quota in allocations.items():
             try:
                 groups.extend(candidates_for(name, quota))
@@ -253,20 +339,75 @@ def candidates_for(source: str, limit: int) -> list[dict[str, str]]:
     raise ValueError(f"Unknown source: {source}")
 
 
-def http_probe(tls_sock: ssl.SSLSocket, host: str, path: str) -> tuple[bool, str | None, str | None]:
+def build_candidates(source: str, count: int,
+                     previous: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """
+    Final candidate list = pinned/trusted IPs + previous winners + fresh samples.
+    Order matters: the first entry for an IP wins, so the pinned flag is kept.
+    """
+    def wanted(src: str) -> bool:
+        return source in ("all", src) if source != "trusted" else False
+
+    ordered: list[dict[str, Any]] = []
+
+    # 1) pinned IPs are re-verified on every run.
+    for item in parse_trusted_file():
+        if source in ("all", "trusted") or item["source"] == source:
+            ordered.append(item)
+
+    # 2) previous winners are re-tested so that stability can be measured.
+    if previous:
+        prev_sorted = sorted(previous, key=lambda r: -int(r.get("online_count", 1)))
+        taken = 0
+        for r in prev_sorted:
+            if taken >= PREV_RECHECK:
+                break
+            if wanted(r.get("source", "custom")):
+                ordered.append({"ip": r["ip"], "source": r.get("source", "custom")})
+                taken += 1
+
+    # 3) fresh candidates (skipped for the trusted-only mode).
+    if source != "trusted":
+        ordered.extend(candidates_for(source, count))
+
+    dedup: dict[str, dict[str, Any]] = {}
+    for item in ordered:
+        try:
+            ip = ipaddress.ip_address(item["ip"])
+        except ValueError:
+            continue
+        # Never scan private/reserved/multicast/documentation addresses.
+        if not isinstance(ip, ipaddress.IPv4Address) or not ip.is_global:
+            continue
+        dedup.setdefault(item["ip"], item)
+    return list(dedup.values())
+
+
+def parse_headers(text: str) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for line in text.split("\r\n")[1:]:
+        if not line:
+            break
+        if ":" in line:
+            k, v = line.split(":", 1)
+            headers[k.strip().lower()] = v.strip()
+    return headers
+
+
+def http_probe(tls_sock: ssl.SSLSocket, host: str, path: str) -> tuple[bool, str | None, dict[str, str]]:
     request = (
         f"GET {path} HTTP/1.1\r\n"
         f"Host: {host}\r\n"
-        "User-Agent: Matix-Scanner/4.0\r\n"
+        "User-Agent: Matix-Scanner/4.1\r\n"
         "Accept: */*\r\n"
         "Connection: close\r\n\r\n"
     ).encode()
     tls_sock.sendall(request)
     data = b""
     deadline = time.monotonic() + HTTP_TIMEOUT
-    while len(data) < 4096 and time.monotonic() < deadline:
+    while len(data) < 8192 and time.monotonic() < deadline:
         try:
-            chunk = tls_sock.recv(min(1024, 4096 - len(data)))
+            chunk = tls_sock.recv(min(2048, 8192 - len(data)))
         except socket.timeout:
             break
         if not chunk:
@@ -276,35 +417,68 @@ def http_probe(tls_sock: ssl.SSLSocket, host: str, path: str) -> tuple[bool, str
             break
 
     text = data.decode("iso-8859-1", errors="ignore")
-    first = text.splitlines()[0] if text.splitlines() else ""
-    # Any valid HTTP response is evidence that the endpoint is speaking HTTP.
+    first = text.split("\r\n", 1)[0] if text else ""
+    # Any valid HTTP status line proves that the endpoint speaks HTTP.
     valid = bool(re.match(r"^HTTP/\d(?:\.\d)?\s+\d{3}\b", first))
-    colo = None
-    for line in text.splitlines():
-        if line.lower().startswith("colo="):
-            colo = line.split("=", 1)[1].strip() or None
-            break
-    return valid, first or None, colo
+    return valid, first or None, parse_headers(text) if valid else {}
 
 
-def test_candidate(item: dict[str, str]) -> dict[str, Any]:
+def is_cdn_response(source: str, headers: dict[str, str]) -> bool:
+    """
+    Confirms that the answer really comes from the CDN the IP is claimed to
+    belong to. This rejects ISP/DPI hijacks, captive portals and transparent
+    proxies that answer on port 443 with a generic HTTP response.
+    """
+    if source == "cloudflare":
+        return "cf-ray" in headers or headers.get("server", "").lower().startswith("cloudflare")
+    if source == "fastly":
+        return (
+            "x-served-by" in headers
+            or "x-fastly-request-id" in headers
+            or "fastly" in headers.get("server", "").lower()
+            or "varnish" in headers.get("via", "").lower()
+        )
+    return True
+
+
+def extract_colo(headers: dict[str, str]) -> str | None:
+    ray = headers.get("cf-ray", "")
+    if "-" in ray:
+        code = ray.rsplit("-", 1)[1].strip().upper()
+        if code.isalpha() and 3 <= len(code) <= 4:
+            return code
+    served = headers.get("x-served-by", "")
+    if served:
+        last = served.split(",")[-1].strip()
+        if "-" in last:
+            code = last.rsplit("-", 1)[1].strip().upper()
+            if code.isalpha() and 3 <= len(code) <= 4:
+                return code
+    return None
+
+
+def colo_country(colo: str | None) -> str | None:
+    return COLO_COUNTRY.get(colo or "")
+
+
+def test_candidate(item: dict[str, Any]) -> dict[str, Any]:
     ip = item["ip"]
     source = item["source"]
     default_host, path = SOURCE_TEST.get(source, (None, "/"))
     host = default_host
 
-    # For custom/VPS IPs we cannot safely invent an SNI/Host. A successful
-    # TLS handshake is still useful, but HTTP verification is only performed
-    # if TEST_HOST is explicitly configured.
-    custom_host = os.environ.get("TEST_HOST", "").strip()
+    # For custom/VPS IPs we cannot safely invent an SNI/Host. Set TEST_HOST
+    # when the endpoint requires a specific SNI/Host; otherwise the IP itself
+    # is validated as a plain HTTPS endpoint.
     if source in {"custom", "vps"}:
-        # Set TEST_HOST when the endpoint requires a specific SNI/Host.
-        # Otherwise validate the IP directly as an HTTPS endpoint.
-        host = custom_host or ip
+        host = os.environ.get("TEST_HOST", "").strip() or ip
+
+    needs_cdn_proof = source in {"cloudflare", "fastly"}
 
     samples: list[float] = []
     tls_ok = False
     http_ok = False
+    cdn_ok = False
     http_status = None
     colo = None
 
@@ -313,22 +487,22 @@ def test_candidate(item: dict[str, str]) -> dict[str, Any]:
         raw = None
         tls = None
         try:
-            raw = socket.create_connection((ip, 443), timeout=TCP_TIMEOUT)
+            raw = socket.create_connection((ip, PORT), timeout=TCP_TIMEOUT)
             raw.settimeout(TLS_TIMEOUT)
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
-            sni = host or ip
-            tls = ctx.wrap_socket(raw, server_hostname=sni)
+            tls = ctx.wrap_socket(raw, server_hostname=host or ip)
             tls_ok = True
             if host:
-                ok, status_line, probe_colo = http_probe(tls, host, path)
+                ok, status_line, headers = http_probe(tls, host, path)
                 http_ok = http_ok or ok
+                if ok and is_cdn_response(source, headers):
+                    cdn_ok = True
+                    colo = colo or extract_colo(headers)
                 if status_line:
                     http_status = status_line
-                if probe_colo:
-                    colo = probe_colo
             elapsed = (time.perf_counter() - start) * 1000
             samples.append(elapsed)
         except (OSError, ssl.SSLError, TimeoutError):
@@ -346,11 +520,16 @@ def test_candidate(item: dict[str, str]) -> dict[str, Any]:
         return {
             "ip": ip, "ms": None, "status": "offline",
             "tls_ok": False, "http_ok": False, "http_status": None,
-            "source": source,
+            "source": source, "pinned": bool(item.get("pinned")),
         }
 
     ms = int(round(statistics.median(samples)))
-    online = ms <= MAX_LATENCY_MS and tls_ok and (http_ok if host else True)
+    online = (
+        ms <= MAX_LATENCY_MS
+        and tls_ok
+        and (http_ok if host else True)
+        and (cdn_ok if needs_cdn_proof else True)
+    )
 
     return {
         "ip": ip,
@@ -358,49 +537,18 @@ def test_candidate(item: dict[str, str]) -> dict[str, Any]:
         "status": "online" if online else "offline",
         "tls_ok": tls_ok,
         "http_ok": http_ok if host else None,
+        "cdn_verified": cdn_ok if needs_cdn_proof else None,
         "http_status": http_status,
         "colo": colo,
+        "country": colo_country(colo),
         "source": source,
+        "pinned": bool(item.get("pinned")),
     }
 
 
 def source_fields(source: str) -> tuple[str, str]:
     meta = SOURCE_META.get(source, SOURCE_META["custom"])
     return meta[0], meta[1]
-
-
-def load_history() -> dict[str, Any]:
-    return load_json(HISTORY_FILE, {"ips": {}, "last_updated": 0})
-
-
-def update_history(history: dict[str, Any], online: list[dict[str, Any]]) -> None:
-    cutoff = now_ts() - HISTORY_DAYS * 86400
-    ips = history.setdefault("ips", {})
-
-    for r in online:
-        ip = r["ip"]
-        e = ips.setdefault(ip, {
-            "first_seen": now_ts(),
-            "last_seen": now_ts(),
-            "online_count": 0,
-            "last_ms": None,
-            "source": r["source"],
-            "history": [],
-        })
-        e["last_seen"] = now_ts()
-        e["online_count"] = e.get("online_count", 0) + 1
-        e["last_ms"] = r["ms"]
-        e["source"] = r["source"]
-        e.setdefault("history", []).append(now_ts())
-        e["history"] = [x for x in e["history"] if x >= cutoff]
-
-    for ip in list(ips):
-        e = ips[ip]
-        e["online_count"] = len([x for x in e.get("history", []) if x >= cutoff])
-        if e.get("last_seen", 0) < cutoff:
-            del ips[ip]
-
-    history["last_updated"] = now_ts()
 
 
 def build_readme_stats(results: list[dict[str, Any]], tested_by_source: dict[str, int]) -> str:
@@ -453,36 +601,26 @@ def update_readme(results: list[dict[str, Any]], tested_by_source: dict[str, int
 def main() -> int:
     parser = argparse.ArgumentParser(description="Matix multi-source IP scanner")
     parser.add_argument("--source", default=os.getenv("SCAN_SOURCE", "all"),
-                        choices=["all", "cloudflare", "fastly", "railway", "vps", "custom"])
+                        choices=["all", "cloudflare", "fastly", "railway", "vps", "custom", "trusted"])
     parser.add_argument("--count", type=int, default=int(os.getenv("SCAN_COUNT", "600")))
     args = parser.parse_args()
 
     count = max(1, min(args.count, 5000))
     source = args.source
 
-    print(f"Matix Scanner 4.0 | source={source} | count={count}")
+    print(f"Matix Scanner 4.1 | source={source} | count={count}")
+
+    # Stability is tracked inside clean_ips.json itself (no extra data files):
+    # an IP that is online again gets online_count + 1, otherwise it drops out.
+    previous_doc = load_json(CLEAN_FILE, {})
+    previous = [r for r in previous_doc.get("results", []) if isinstance(r, dict) and r.get("ip")]
+    prev_counts = {r["ip"]: int(r.get("online_count", 1)) for r in previous}
+
     try:
-        candidates = candidates_for(source, count)
+        candidates = build_candidates(source, count, previous)
     except Exception as exc:
         print(f"[ERROR] Candidate collection failed: {exc}")
         return 1
-
-    # Deduplicate by IP while preserving the first trusted source.
-    dedup: dict[str, dict[str, str]] = {}
-    for item in candidates:
-        try:
-            ipaddress.ip_address(item["ip"])
-        except ValueError:
-            continue
-        dedup.setdefault(item["ip"], item)
-    candidates = list(dedup.values())
-
-    # Never scan arbitrary private/reserved/multicast/documentation addresses.
-    candidates = [
-        x for x in candidates
-        if isinstance(ipaddress.ip_address(x["ip"]), ipaddress.IPv4Address)
-        and ipaddress.ip_address(x["ip"]).is_global
-    ]
 
     print(f"Candidates after validation: {len(candidates)}")
 
@@ -500,39 +638,35 @@ def main() -> int:
                 result = {
                     "ip": item["ip"], "ms": None, "status": "offline",
                     "tls_ok": False, "http_ok": False,
-                    "source": item["source"],
+                    "source": item["source"], "pinned": bool(item.get("pinned")),
                 }
             results.append(result)
             if n % 100 == 0 or n == len(candidates):
                 print(f"Progress: {n}/{len(candidates)}")
 
     online = [r for r in results if r["status"] == "online"]
-    online.sort(key=lambda r: (r["ms"] if r["ms"] is not None else 999999, -int(r.get("http_ok") is True)))
+    online.sort(key=lambda r: (not r.get("pinned"), r["ms"] if r["ms"] is not None else 999999))
 
-    history = load_history()
-    update_history(history, online)
-    save_json(HISTORY_FILE, history)
-
-    # Preserve source identity in historical data. Do not publish stale IPs
-    # as "online": only currently verified results enter clean_ips.json.
     final: list[dict[str, Any]] = []
     for r in online:
-        e = history["ips"].get(r["ip"], {})
         emoji, source_name = source_fields(r["source"])
-        count_seen = int(e.get("online_count", 1))
+        seen = prev_counts.get(r["ip"], 0) + 1
         final.append({
             "ip": r["ip"],
             "ms": r["ms"],
             "status": "online",
-            "colo": r.get("colo") or ("N/A" if r["source"] != "cloudflare" else None),
+            "colo": r.get("colo"),
+            "country": r.get("country"),
             "source": r["source"],
             "source_emoji": emoji,
             "source_name": source_name,
-            "persistent": count_seen >= PERSISTENT_COUNT,
-            "long_term": count_seen >= LONG_TERM_COUNT,
-            "online_count": count_seen,
+            "pinned": bool(r.get("pinned")),
+            "persistent": seen >= PERSISTENT_COUNT,
+            "long_term": seen >= LONG_TERM_COUNT,
+            "online_count": seen,
             "tls_ok": bool(r.get("tls_ok")),
             "http_ok": r.get("http_ok"),
+            "cdn_verified": r.get("cdn_verified"),
             "http_status": r.get("http_status"),
         })
         if len(final) >= MAX_RESULTS:
@@ -542,6 +676,9 @@ def main() -> int:
         "updated": now_ts(),
         "total_tested": len(candidates),
         "online_count": len(final),
+        "pinned_count": sum(1 for x in final if x["pinned"]),
+        "persistent_count": sum(1 for x in final if x["persistent"]),
+        "long_term_count": sum(1 for x in final if x["long_term"]),
         "results": final,
         "source_stats": {
             s: {
@@ -551,29 +688,14 @@ def main() -> int:
             for s in SOURCE_META
         },
         "scanner": {
-            "version": "4.0",
+            "version": "4.1",
             "max_latency_ms": MAX_LATENCY_MS,
             "probes": PROBES,
-            "validation": "TCP+TLS+HTTP",
+            "validation": "TCP+TLS+HTTP+CDN-fingerprint",
             "cloudflare_policy": "small_secondary_source",
         },
     }
     save_json(CLEAN_FILE, output)
-
-    # all_ips is a compact historical index, not a stale public result list.
-    all_data = load_json(ALL_FILE, {"ips": {}, "last_updated": 0})
-    all_ips = all_data.setdefault("ips", {})
-    for r in online:
-        old = all_ips.get(r["ip"], {})
-        all_ips[r["ip"]] = {
-            **old,
-            "last_seen": now_ts(),
-            "last_ms": r["ms"],
-            "source": r["source"],
-            "online_count": history["ips"].get(r["ip"], {}).get("online_count", 1),
-        }
-    all_data["last_updated"] = now_ts()
-    save_json(ALL_FILE, all_data)
 
     update_readme(final, tested_by_source)
     print(f"ONLINE: {len(final)} / {len(candidates)}")

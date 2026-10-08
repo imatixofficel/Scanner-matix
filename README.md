@@ -24,10 +24,16 @@ Fastly فهرست عمومی IPهای خودش را به‌صورت رسمی م�
 
 1. اتصال TCP به پورت 443 برقرار شود.
 2. TLS handshake موفق باشد.
-3. در منابعی که hostname معتبر دارند، پاسخ HTTP معتبر دریافت شود.
+3. پاسخ HTTP معتبر دریافت شود و برای Cloudflare/Fastly **اثبات CDN** هم وجود داشته باشد (هدر `cf-ray` یا `x-served-by`)؛ پاسخ‌های جعلی ISP/DPI و پراکسی‌های شفاف رد می‌شوند.
 4. latency اندازه‌گیری‌شده حداکثر 1000ms باشد.
 5. IP از نوع global IPv4 باشد و private/reserved/documentation نباشد.
 6. IP فعلی در همین اجرای اسکن آنلاین باشد؛ IP قدیمی دیگر به‌عنوان `online` منتشر نمی‌شود.
+
+### IPهای پین‌شده و پایدار
+
+- IPهای داخل `trusted_ips.txt` در **هر اسکن** دوباره تست می‌شوند و اگر سالم باشند با 📌 بالای لیست نمایش داده می‌شوند.
+- برندگان اسکن قبلی هم دوباره تست می‌شوند. `online_count` یعنی چند اسکن پشت‌سرهم آنلاین بوده (💎 از ۵ اسکن، 👑 از ۳۰ اسکن).
+- فقط یک فایل داده لازم است: `data/clean_ips.json` (دیگر `all_ips.json` و `history.json` وجود ندارند).
 
 ### نکته مهم برای VPN
 
@@ -47,6 +53,8 @@ Latency هم از **GitHub Actions runner** اندازه‌گیری می‌شو�
   "ms": 120,
   "status": "online",
   "colo": "IAD",
+  "country": "USA",
+  "pinned": false,
   "source": "fastly",
   "source_emoji": "⚡",
   "source_name": "فستلی",
@@ -54,9 +62,26 @@ Latency هم از **GitHub Actions runner** اندازه‌گیری می‌شو�
   "long_term": false,
   "online_count": 1,
   "tls_ok": true,
-  "http_ok": true
+  "http_ok": true,
+  "cdn_verified": true
 }
 ```
+
+## اسکنر ترمینال (CMD / PowerShell / Terminal)
+
+```bash
+python matix.py
+```
+
+در ویندوز داخل پوشه پروژه فقط `matix` هم کافی است. لوگوی Matix نمایش داده می‌شود و از منو منبع، تعداد تست، حالت (سریع‌ترین / سراسر دنیا) و تعداد IP دلخواه را انتخاب می‌کنی؛ بعد از اسکن می‌توانی کپی یا ذخیره کنی.
+
+```bash
+python matix.py --source fastly --count 600 --top 20 --diverse --save ips.txt --yes
+```
+
+- `--diverse`: بهترین IP از هر لوکیشن (colo) را برمی‌گرداند تا نتایج از نقاط مختلف دنیا باشند.
+- نتیجه روی **شبکه خودت** سنجیده می‌شود، پس از GitHub Actions دقیق‌تر است.
+- اگر API رسمی در شبکه‌ات بسته باشد، از یک snapshot داخلی رنج‌ها استفاده می‌شود (باز هم همه چیز با اثبات CDN تأیید می‌شود).
 
 ## اجرای دستی GitHub Actions
 
@@ -69,22 +94,9 @@ Latency هم از **GitHub Actions runner** اندازه‌گیری می‌شو�
 
 README در هر اجرا timestamp جدید می‌گیرد تا تغییر repository ثبت شود:
 
-`<!-- AUTO_UPDATE_START -->
-### 🤖 Matix Live Status
+`<!-- AUTO_UPDATE_START -->`
 
-| منبع | آنلاین | کل تست‌شده |
-|---|---:|---:|
-| ⚡ فستلی | 72 | 535 |
-| ☁️ کلادفلر | 14 | 61 |
-| 🖥️ Railway | 3 | 3 |
-| 🛡️ VPS دستی | 0 | 0 |
-| ✍️ دستی | 0 | 0 |
-
-- 🕐 آخرین اسکن: `2026-10-08 11:16:29 UTC`
-- ⚡ سقف latency: `1000 ms`
-- 🔐 اعتبارسنجی: TCP + TLS + HTTP
-- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
-<!-- AUTO_UPDATE_END -->`
+`<!-- AUTO_UPDATE_END -->`
 
 ## custom_ips.txt
 
@@ -118,11 +130,12 @@ python scanner.py --source fastly --count 500
 Scanner-matix/
 ├── .github/workflows/scan.yml
 ├── data/
-│   ├── clean_ips.json
-│   ├── all_ips.json
-│   └── history.json
+│   └── clean_ips.json
 ├── custom_ips.txt
+├── trusted_ips.txt
 ├── scanner.py
+├── matix.py
+├── matix.bat
 ├── app.js
 ├── index.html
 ├── style.css
@@ -135,13 +148,13 @@ Scanner-matix/
 
 | منبع | آنلاین | کل تست‌شده |
 |---|---:|---:|
-| ⚡ فستلی | 72 | 535 |
-| ☁️ کلادفلر | 14 | 61 |
-| 🖥️ Railway | 3 | 3 |
+| ⚡ فستلی | 0 | 0 |
+| ☁️ کلادفلر | 0 | 0 |
+| 🖥️ Railway | 0 | 0 |
 | 🛡️ VPS دستی | 0 | 0 |
 | ✍️ دستی | 0 | 0 |
 
-- 🕐 آخرین اسکن: `2026-10-08 11:16:29 UTC`
+- 🕐 آخرین اسکن: `not scanned yet`
 - ⚡ سقف latency: `1000 ms`
 - 🔐 اعتبارسنجی: TCP + TLS + HTTP
 - ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
