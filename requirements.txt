@@ -1,0 +1,2 @@
+# Matix Scanner uses only Python 3.11 standard-library modules.
+# No pip packages are required.

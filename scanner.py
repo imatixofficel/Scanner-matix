@@ -1,526 +1,584 @@
+"""
+Matix Scanner - Multi-source, VPN-oriented IP quality scanner.
+
+Only standard-library modules are used.
+The scanner samples small, controlled portions of officially published
+network ranges and validates candidates with TCP + TLS + HTTP.
+
+IMPORTANT:
+- A successful TLS/HTTP test proves the IP is reachable as a web endpoint.
+- It does NOT prove that the IP is a working VLESS/WireGuard/Trojan server.
+- CDN IPs (Cloudflare/Fastly) normally need the correct SNI/Host in a VPN config.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import ipaddress
 import json
+import os
+import random
+import re
 import socket
 import ssl
+import statistics
 import time
-import random
-import os
-import datetime
-import re
 import urllib.request
-from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
+ROOT = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(ROOT, "data")
+CLEAN_FILE = os.path.join(DATA_DIR, "clean_ips.json")
+ALL_FILE = os.path.join(DATA_DIR, "all_ips.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+README_FILE = os.path.join(ROOT, "README.md")
+CUSTOM_FILE = os.path.join(ROOT, "custom_ips.txt")
 
-# ============================================================
-# تنظیمات
-# ============================================================
-CF_RANGES = [
-    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22",
-    "103.31.4.0/22", "141.101.64.0/18", "108.162.192.0/18",
-    "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22",
-    "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
-    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
-]
-
-SAMPLE_PER_RANGE = 500
-MAX_WORKERS = 200
-TIMEOUT_TCP = 3
-TIMEOUT_HTTP = 5
-
+MAX_LATENCY_MS = 1000
+TCP_TIMEOUT = 2.5
+TLS_TIMEOUT = 3.5
+HTTP_TIMEOUT = 4.0
+PROBES = 2
+MAX_WORKERS = 120
 HISTORY_DAYS = 30
-MIN_ONLINE_COUNT = 5
-LONG_TERM_COUNT = 50
-MAX_RESULTS = 2000
+PERSISTENT_COUNT = 5
+LONG_TERM_COUNT = 30
+MAX_RESULTS = 1500
 
-ALL_IPS_FILE = "data/all_ips.json"
-CLEAN_IPS_FILE = "data/clean_ips.json"
-HISTORY_FILE = "data/history.json"
-README_FILE = "README.md"
+# Keep Cloudflare small because it is not the primary source for this project.
+DEFAULT_SAMPLE_LIMITS = {
+    "cloudflare": 80,
+    "fastly": 500,
+    "railway": 30,
+    "custom": 1000,
+}
 
+SOURCE_META = {
+    "cloudflare": ("☁️", "کلادفلر", "https://www.cloudflare.com"),
+    "fastly": ("⚡", "فستلی", "https://www.fastly.com"),
+    "railway": ("🖥️", "Railway", "https://railway.com"),
+    "vps": ("🛡️", "VPS دستی", ""),
+    "custom": ("✍️", "دستی", ""),
+}
 
-# ============================================================
-# ساعت مطمئن
-# ============================================================
-def safe_now():
-    local_ts = int(time.time())
-    year = datetime.datetime.utcfromtimestamp(local_ts).year
+# Railway does NOT publish a stable public inbound IP range. Therefore the
+# railway source below resolves Railway's own public hostnames instead of
+# pretending that a third-party range is official.
+RAILWAY_HOSTS = (
+    "railway.app",
+    "www.railway.com",
+)
 
-    if 2024 <= year <= 2030:
-        return local_ts
+SOURCE_URLS = {
+    "cloudflare": "https://api.cloudflare.com/client/v4/ips",
+    "fastly": "https://api.fastly.com/public-ip-list",
+}
 
-    print(f"WARN: System clock wrong (year={year}) - fetching from internet...")
-
-    try:
-        req = urllib.request.Request("https://www.google.com", method="HEAD")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            date_header = resp.headers.get("Date")
-            if date_header:
-                dt = parsedate_to_datetime(date_header)
-                print(f"OK: Got from Google: {dt}")
-                return int(dt.timestamp())
-    except Exception as e:
-        print(f"FAIL: Google: {e}")
-
-    try:
-        req = urllib.request.Request("https://cloudflare.com", method="HEAD")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            date_header = resp.headers.get("Date")
-            if date_header:
-                dt = parsedate_to_datetime(date_header)
-                print(f"OK: Got from Cloudflare: {dt}")
-                return int(dt.timestamp())
-    except Exception as e:
-        print(f"FAIL: Cloudflare: {e}")
-
-    try:
-        req = urllib.request.Request("https://httpbin.org/headers", method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            date_header = resp.headers.get("Date")
-            if date_header:
-                dt = parsedate_to_datetime(date_header)
-                print(f"OK: Got from HTTPBin: {dt}")
-                return int(dt.timestamp())
-    except Exception as e:
-        print(f"FAIL: HTTPBin: {e}")
-
-    print("WARN: All methods failed - using fallback date")
-    return int(datetime.datetime(2025, 6, 15, 12, 0, 0).timestamp())
+SOURCE_TEST = {
+    "cloudflare": ("cloudflare.com", "/cdn-cgi/trace"),
+    "fastly": ("www.fastly.com", "/"),
+    "railway": ("railway.app", "/"),
+    "vps": (None, "/"),
+    "custom": (None, "/"),
+}
 
 
-# ============================================================
-# توابع کمکی
-# ============================================================
-def ip_to_int(ip):
-    p = list(map(int, ip.split('.')))
-    return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]
+def now_ts() -> int:
+    return int(time.time())
 
 
-def int_to_ip(n):
-    return f"{(n >> 24) & 255}.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}"
-
-
-def sample_from_cidr(cidr, count):
-    base, prefix = cidr.split('/')
-    base_int = ip_to_int(base)
-    host_bits = 32 - int(prefix)
-    size = 2 ** host_bits
-    network = base_int & (~(size - 1) & 0xFFFFFFFF)
-    out = set()
-    max_attempts = count * 3
-    attempts = 0
-    while len(out) < count and attempts < max_attempts:
-        offset = random.randint(1, size - 2) if size > 2 else 0
-        out.add(int_to_ip(network + offset))
-        attempts += 1
-    return list(out)
-
-
-def test_tcp_tls(ip):
-    start = time.time()
-    try:
-        sock = socket.create_connection((ip, 443), timeout=TIMEOUT_TCP)
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        tls = ctx.wrap_socket(sock, server_hostname="cloudflare.com")
-        tls.send(b"GET /cdn-cgi/trace HTTP/1.1\r\nHost: cloudflare.com\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n")
-        tls.settimeout(TIMEOUT_HTTP)
-        response = b""
-        try:
-            while len(response) < 4096:
-                chunk = tls.recv(1024)
-                if not chunk:
-                    break
-                response += chunk
-        except socket.timeout:
-            pass
-        tls.close()
-        ms = int((time.time() - start) * 1000)
-        response_str = response.decode('utf-8', errors='ignore')
-        if "HTTP/" in response_str and "colo=" in response_str:
-            colo = "UNK"
-            for line in response_str.split('\n'):
-                if line.startswith('colo='):
-                    colo = line.split('=')[1].strip()
-                    break
-            return {"ip": ip, "ms": ms, "status": "online", "colo": colo}
-        else:
-            return {"ip": ip, "ms": ms, "status": "half", "colo": None}
-    except Exception:
-        return {"ip": ip, "ms": None, "status": "offline", "colo": None}
-
-
-# ============================================================
-# فایل‌ها
-# ============================================================
-def load_json_file(path, default):
+def load_json(path: str, default: Any) -> Any:
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return default
 
 
-def save_json_file(path, data):
+def save_json(path: str, data: Any) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
 
 
-# ============================================================
-# all_ips.json
-# ============================================================
-def load_all_ips():
-    return load_json_file(ALL_IPS_FILE, {"ips": {}, "last_updated": 0})
+def fetch_json(url: str, timeout: float = 10.0) -> dict[str, Any]:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Matix-Scanner/4.0 (+https://github.com/imatixofficel/Scanner-matix)"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
 
 
-def save_all_ips(all_ips_data):
-    save_json_file(ALL_IPS_FILE, all_ips_data)
-
-
-def update_all_ips(all_ips_data, new_results):
-    now = safe_now()
-    ips = all_ips_data.get("ips", {})
-    for r in new_results:
-        if r["status"] != "online":
+def sample_networks(cidrs: list[str], limit: int) -> list[str]:
+    """Randomly sample usable IPv4s from CIDRs without expanding huge ranges."""
+    result: set[str] = set()
+    networks: list[ipaddress.IPv4Network] = []
+    for cidr in cidrs:
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+            if isinstance(net, ipaddress.IPv4Network):
+                networks.append(net)
+        except ValueError:
             continue
-        ip = r["ip"]
-        if ip in ips:
-            entry = ips[ip]
-            entry["last_seen"] = now
-            entry["last_ms"] = r["ms"]
-            entry["colo"] = r.get("colo")
-            entry["seen_count"] = entry.get("seen_count", 0) + 1
-        else:
-            ips[ip] = {
-                "first_seen": now,
-                "last_seen": now,
-                "last_ms": r["ms"],
-                "colo": r.get("colo"),
-                "seen_count": 1,
-                "status": "online"
-            }
-    all_ips_data["ips"] = ips
-    all_ips_data["last_updated"] = now
-    return all_ips_data
 
+    if not networks or limit <= 0:
+        return []
 
-def cleanup_all_ips(all_ips_data, max_days=365):
-    now = safe_now()
-    cutoff = now - (max_days * 86400)
-    ips = all_ips_data.get("ips", {})
-    cleaned = {}
-    for ip, entry in ips.items():
-        if entry.get("last_seen", 0) >= cutoff:
-            cleaned[ip] = entry
-    all_ips_data["ips"] = cleaned
-    return all_ips_data
-
-
-# ============================================================
-# history.json
-# ============================================================
-def load_history():
-    return load_json_file(HISTORY_FILE, {"ips": {}, "last_updated": 0})
-
-
-def save_history(history):
-    save_json_file(HISTORY_FILE, history)
-
-
-def update_history(history, results):
-    now = safe_now()
-    cutoff = now - (HISTORY_DAYS * 86400)
-    ips = history.get("ips", {})
-    for r in results:
-        if r["status"] != "online":
+    # Allocate a fair portion to each network, then fill the remainder.
+    per_net = max(1, limit // len(networks))
+    for net in networks:
+        usable = max(0, net.num_addresses - (2 if net.prefixlen < 31 else 0))
+        take = min(per_net, usable)
+        if take <= 0:
             continue
-        ip = r["ip"]
-        if ip not in ips:
-            ips[ip] = {
-                "first_seen": now,
-                "last_seen": now,
-                "online_count": 0,
-                "last_ms": None,
-                "colo": None,
-                "history": []
-            }
-        entry = ips[ip]
-        entry["last_seen"] = now
-        entry["online_count"] = entry.get("online_count", 0) + 1
-        entry["last_ms"] = r["ms"]
-        entry["colo"] = r.get("colo")
-        entry["history"].append(now)
-        entry["history"] = [t for t in entry["history"] if t > cutoff]
-    for ip in list(ips.keys()):
-        entry = ips[ip]
-        if entry["last_seen"] < cutoff:
-            del ips[ip]
+
+        if usable <= take:
+            for ip in net.hosts():
+                result.add(str(ip))
         else:
-            entry["online_count"] = len(entry["history"])
-    history["ips"] = ips
-    history["last_updated"] = now
-    return history
+            first = int(net.network_address) + 1
+            last = int(net.broadcast_address) - 1
+            for n in random.sample(range(first, last + 1), take):
+                result.add(str(ipaddress.IPv4Address(n)))
 
-
-def get_persistent_ips(history):
-    persistent = []
-    for ip, entry in history.get("ips", {}).items():
-        if entry.get("online_count", 0) >= MIN_ONLINE_COUNT:
-            persistent.append({
-                "ip": ip,
-                "online_count": entry["online_count"],
-                "last_ms": entry.get("last_ms"),
-                "colo": entry.get("colo"),
-                "first_seen": entry.get("first_seen"),
-                "last_seen": entry.get("last_seen")
-            })
-    persistent.sort(key=lambda x: x["online_count"], reverse=True)
-    return persistent
-
-
-def get_long_term_ips(history):
-    long_term = []
-    for ip, entry in history.get("ips", {}).items():
-        if entry.get("online_count", 0) >= LONG_TERM_COUNT:
-            long_term.append({
-                "ip": ip,
-                "online_count": entry["online_count"],
-                "last_ms": entry.get("last_ms"),
-                "colo": entry.get("colo"),
-                "first_seen": entry.get("first_seen"),
-                "last_seen": entry.get("last_seen")
-            })
-    long_term.sort(key=lambda x: x["online_count"], reverse=True)
-    return long_term
-
-
-# ============================================================
-# 📝 آپدیت README — جلوگیری از خواب GitHub Actions
-# ============================================================
-def update_readme(output, persistent_count, long_term_count):
-    """
-    یه بلاک آمار زنده به README اضافه/آپدیت می‌کنه.
-    هر بار که اجرا می‌شه، این بلاک عوض می‌شه → commit جدید می‌شه.
-    """
-    marker_start = "<!-- AUTO_UPDATE_START -->"
-    marker_end = "<!-- AUTO_UPDATE_END -->"
-
-    try:
-        now_str = datetime.datetime.utcfromtimestamp(output['updated']).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-        new_block = (
-            marker_start + "\n"
-            "### 🤖 Matix Live Status\n\n"
-            "| 📊 آمار | مقدار |\n"
-            "|---|---|\n"
-            "| 🕐 آخرین اسکن | `" + now_str + "` |\n"
-            "| ✅ IPهای آنلاین | `" + str(output['online_count']) + "` |\n"
-            "| 💎 ماندگار | `" + str(persistent_count) + "` |\n"
-            "| 👑 بلندمدت | `" + str(long_term_count) + "` |\n"
-            "| 🔄 کل تست‌شده | `" + str(output['total_tested']) + "` |\n"
-            "| 📦 تاریخی | `" + str(output['total_historical']) + "` |\n"
-            "| 🌐 بروزرسانی خودکار | هر ۱۵ دقیقه |\n"
-            + marker_end
-        )
-
-        if os.path.exists(README_FILE):
-            with open(README_FILE, "r", encoding="utf-8") as f:
-                content = f.read()
-        else:
-            content = "# Matix Scanner\n\n"
-
-        if marker_start in content and marker_end in content:
-            pattern = re.compile(
-                re.escape(marker_start) + r".*?" + re.escape(marker_end),
-                re.DOTALL
+    # Fill remaining slots from all networks.
+    attempts = 0
+    while len(result) < limit and attempts < limit * 20:
+        net = random.choice(networks)
+        usable = max(0, net.num_addresses - (2 if net.prefixlen < 31 else 0))
+        if usable:
+            n = random.randint(
+                int(net.network_address) + (1 if net.prefixlen < 31 else 0),
+                int(net.broadcast_address) - (1 if net.prefixlen < 31 else 0),
             )
-            content = pattern.sub(new_block, content)
-            action = "updated"
-        else:
-            if not content.endswith("\n"):
-                content += "\n"
-            content += "\n" + new_block + "\n"
-            action = "added"
-
-        with open(README_FILE, "w", encoding="utf-8") as f:
-            f.write(content)
-
-        print(f"OK: README {action} with live stats")
-
-    except Exception as e:
-        print(f"WARN: Failed to update README: {e}")
+            result.add(str(ipaddress.IPv4Address(n)))
+        attempts += 1
+    return list(result)
 
 
-# ============================================================
-# اصلی
-# ============================================================
-def main():
-    print("=" * 60)
-    print("Matix Scanner v3 - Daily Refresh + Persistent + No Duplicates")
-    print("=" * 60)
+def get_cloudflare() -> list[str]:
+    data = fetch_json(SOURCE_URLS["cloudflare"])
+    return data.get("result", {}).get("ipv4_cidrs", [])
 
-    now_ts = safe_now()
-    print(f"\nTime check:")
-    print(f"   raw time.time()  = {int(time.time())}")
-    print(f"   safe_now()       = {now_ts}")
-    print(f"   UTC              = {datetime.datetime.utcfromtimestamp(now_ts)}")
-    print(f"   Year             = {datetime.datetime.utcfromtimestamp(now_ts).year}")
 
-    # 1. بارگذاری
-    print("\n[1/7] Loading previous data...")
-    all_ips_data = load_all_ips()
-    history = load_history()
-    prev_ip_count = len(all_ips_data.get("ips", {}))
-    print(f"      Previous IPs in history: {prev_ip_count}")
+def get_fastly() -> list[str]:
+    data = fetch_json(SOURCE_URLS["fastly"])
+    return data.get("addresses", [])
 
-    # 2. تولید لیست
-    print(f"\n[2/7] Generating fresh candidate IPs...")
-    candidates_set = set()
-    for cidr in CF_RANGES:
-        candidates_set.update(sample_from_cidr(cidr, SAMPLE_PER_RANGE))
-    candidates = list(candidates_set)
-    print(f"      Generated {len(candidates)} unique candidates")
 
-    # 3. تست
-    print(f"\n[3/7] Testing {len(candidates)} IPs (TCP+TLS)...")
-    start = time.time()
-    results = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = [ex.submit(test_tcp_tls, ip) for ip in candidates]
-        done = 0
-        for f in as_completed(futures):
-            results.append(f.result())
-            done += 1
-            if done % 500 == 0:
-                pct = done * 100 // len(candidates)
-                print(f"      Progress: {done}/{len(candidates)} ({pct}%)")
+def resolve_hosts(hosts: tuple[str, ...]) -> list[str]:
+    out: set[str] = set()
+    for host in hosts:
+        try:
+            for item in socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM):
+                out.add(item[4][0])
+        except OSError:
+            pass
+    return sorted(out)
 
-    print(f"      Stage 1 complete in {time.time()-start:.1f}s")
 
-    online_1 = [r for r in results if r["status"] == "online"]
-    print(f"      Online: {len(online_1)}")
+def parse_custom_file() -> list[dict[str, str]]:
+    """
+    Supported:
+      1.1.1.1
+      1.1.1.1,cloudflare
+      1.1.1.1 vps
+    Blank lines and # comments are ignored.
+    """
+    out: list[dict[str, str]] = []
+    if not os.path.exists(CUSTOM_FILE):
+        return out
+    with open(CUSTOM_FILE, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [p.strip() for p in re.split(r"[,|;\s]+", line) if p.strip()]
+            try:
+                ip = str(ipaddress.ip_address(parts[0]))
+            except ValueError:
+                continue
+            source = parts[1].lower() if len(parts) > 1 else "custom"
+            if source not in SOURCE_META:
+                source = "custom"
+            out.append({"ip": ip, "source": source})
+    return out
 
-    # 4. حذف تکراری
-    print("\n[4/7] Deduplicating current batch...")
-    seen = set()
-    online_unique = []
-    for r in sorted(online_1, key=lambda x: x["ms"] or 99999):
-        if r["ip"] not in seen:
-            seen.add(r["ip"])
-            online_unique.append(r)
-    print(f"      Unique in batch: {len(online_unique)}")
 
-    # 5. به‌روزرسانی
-    print("\n[5/7] Updating all_ips and history...")
-    all_ips_data = update_all_ips(all_ips_data, online_unique)
-    all_ips_data = cleanup_all_ips(all_ips_data, max_days=365)
-    save_all_ips(all_ips_data)
-    print(f"      Total historical IPs: {len(all_ips_data['ips'])}")
+def candidates_for(source: str, limit: int) -> list[dict[str, str]]:
+    if source == "custom":
+        return parse_custom_file()[:limit]
 
-    history = update_history(history, online_unique)
-    save_history(history)
-    persistent = get_persistent_ips(history)
-    long_term = get_long_term_ips(history)
-    print(f"      Persistent IPs (>={MIN_ONLINE_COUNT}): {len(persistent)}")
-    print(f"      Long-term IPs (>={LONG_TERM_COUNT}): {len(long_term)}")
+    if source == "cloudflare":
+        return [{"ip": ip, "source": "cloudflare"} for ip in sample_networks(get_cloudflare(), limit)]
 
-    # 6. خروجی
-    print("\n[6/7] Building final output (fresh + old, no duplicates)...")
+    if source == "fastly":
+        return [{"ip": ip, "source": "fastly"} for ip in sample_networks(get_fastly(), limit)]
 
-    fresh_ips = {r["ip"]: r for r in online_unique}
-    now = safe_now()
-    all_known = all_ips_data.get("ips", {})
-    all_candidates = {}
+    if source == "railway":
+        return [{"ip": ip, "source": "railway"} for ip in resolve_hosts(RAILWAY_HOSTS)[:limit]]
 
-    for ip, r in fresh_ips.items():
-        all_candidates[ip] = {
-            "ip": ip,
-            "ms": r["ms"],
-            "status": "online",
-            "colo": r.get("colo"),
-            "source": "fresh"
+    if source == "vps":
+        # VPS IPs must be explicitly supplied by the operator in custom_ips.txt.
+        return [x for x in parse_custom_file() if x["source"] == "vps"][:limit]
+
+    if source == "all":
+        # --count is the TOTAL candidate budget.
+        # Fastly gets the largest share; Cloudflare stays deliberately small.
+        allocations = {
+            "fastly": max(1, int(limit * 0.60)),
+            "cloudflare": max(1, int(limit * 0.10)),
+            "railway": max(1, int(limit * 0.05)),
+            "custom": max(1, limit - int(limit * 0.75)),
+        }
+        groups = []
+        for name, quota in allocations.items():
+            try:
+                groups.extend(candidates_for(name, quota))
+            except Exception as exc:
+                print(f"[WARN] source={name}: {exc}")
+        # Fill unused slots from Fastly if optional sources have no candidates.
+        if len(groups) < limit:
+            try:
+                groups.extend(candidates_for("fastly", limit - len(groups)))
+            except Exception as exc:
+                print(f"[WARN] fastly refill: {exc}")
+        return groups[:limit]
+
+    raise ValueError(f"Unknown source: {source}")
+
+
+def http_probe(tls_sock: ssl.SSLSocket, host: str, path: str) -> tuple[bool, str | None, str | None]:
+    request = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "User-Agent: Matix-Scanner/4.0\r\n"
+        "Accept: */*\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode()
+    tls_sock.sendall(request)
+    data = b""
+    deadline = time.monotonic() + HTTP_TIMEOUT
+    while len(data) < 4096 and time.monotonic() < deadline:
+        try:
+            chunk = tls_sock.recv(min(1024, 4096 - len(data)))
+        except socket.timeout:
+            break
+        if not chunk:
+            break
+        data += chunk
+        if b"\r\n\r\n" in data:
+            break
+
+    text = data.decode("iso-8859-1", errors="ignore")
+    first = text.splitlines()[0] if text.splitlines() else ""
+    # Any valid HTTP response is evidence that the endpoint is speaking HTTP.
+    valid = bool(re.match(r"^HTTP/\d(?:\.\d)?\s+\d{3}\b", first))
+    colo = None
+    for line in text.splitlines():
+        if line.lower().startswith("colo="):
+            colo = line.split("=", 1)[1].strip() or None
+            break
+    return valid, first or None, colo
+
+
+def test_candidate(item: dict[str, str]) -> dict[str, Any]:
+    ip = item["ip"]
+    source = item["source"]
+    default_host, path = SOURCE_TEST.get(source, (None, "/"))
+    host = default_host
+
+    # For custom/VPS IPs we cannot safely invent an SNI/Host. A successful
+    # TLS handshake is still useful, but HTTP verification is only performed
+    # if TEST_HOST is explicitly configured.
+    custom_host = os.environ.get("TEST_HOST", "").strip()
+    if source in {"custom", "vps"}:
+        # Set TEST_HOST when the endpoint requires a specific SNI/Host.
+        # Otherwise validate the IP directly as an HTTPS endpoint.
+        host = custom_host or ip
+
+    samples: list[float] = []
+    tls_ok = False
+    http_ok = False
+    http_status = None
+    colo = None
+
+    for _ in range(PROBES):
+        start = time.perf_counter()
+        raw = None
+        tls = None
+        try:
+            raw = socket.create_connection((ip, 443), timeout=TCP_TIMEOUT)
+            raw.settimeout(TLS_TIMEOUT)
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            sni = host or ip
+            tls = ctx.wrap_socket(raw, server_hostname=sni)
+            tls_ok = True
+            if host:
+                ok, status_line, probe_colo = http_probe(tls, host, path)
+                http_ok = http_ok or ok
+                if status_line:
+                    http_status = status_line
+                if probe_colo:
+                    colo = probe_colo
+            elapsed = (time.perf_counter() - start) * 1000
+            samples.append(elapsed)
+        except (OSError, ssl.SSLError, TimeoutError):
+            pass
+        finally:
+            try:
+                if tls:
+                    tls.close()
+                elif raw:
+                    raw.close()
+            except OSError:
+                pass
+
+    if not samples:
+        return {
+            "ip": ip, "ms": None, "status": "offline",
+            "tls_ok": False, "http_ok": False, "http_status": None,
+            "source": source,
         }
 
-    for ip, entry in all_known.items():
-        if ip not in all_candidates:
-            last_seen_hours = (now - entry.get("last_seen", 0)) / 3600
-            all_candidates[ip] = {
-                "ip": ip,
-                "ms": entry.get("last_ms"),
-                "status": "online",
-                "colo": entry.get("colo"),
-                "source": "old",
-                "last_seen_hours_ago": round(last_seen_hours, 1)
-            }
+    ms = int(round(statistics.median(samples)))
+    online = ms <= MAX_LATENCY_MS and tls_ok and (http_ok if host else True)
 
-    persistent_map = {p["ip"]: p for p in persistent}
-    long_term_map = {l["ip"]: l for l in long_term}
-
-    final_list = []
-    for ip, item in all_candidates.items():
-        if ip in long_term_map:
-            item["persistent"] = True
-            item["long_term"] = True
-            item["online_count"] = long_term_map[ip]["online_count"]
-        elif ip in persistent_map:
-            item["persistent"] = True
-            item["long_term"] = False
-            item["online_count"] = persistent_map[ip]["online_count"]
-        else:
-            item["persistent"] = False
-            item["long_term"] = False
-            item["online_count"] = history.get("ips", {}).get(ip, {}).get("online_count", 1)
-        final_list.append(item)
-
-    final_list.sort(key=lambda x: (
-        not x.get("long_term", False),
-        not x.get("persistent", False),
-        x.get("ms") or 99999
-    ))
-
-    seen = set()
-    unique_final = []
-    for item in final_list:
-        if item["ip"] not in seen:
-            seen.add(item["ip"])
-            unique_final.append(item)
-
-    final_list = unique_final[:MAX_RESULTS]
-    print(f"      Final unique IPs: {len(final_list)}")
-
-    # 7. ذخیره
-    print("\n[7/7] Saving output...")
-
-    output = {
-        "updated": safe_now(),
-        "total_tested": len(candidates),
-        "online_count": len([x for x in final_list if x["status"] == "online"]),
-        "persistent_count": len(persistent),
-        "long_term_count": len(long_term),
-        "total_historical": len(all_known),
-        "fresh_count": len([x for x in final_list if x.get("source") == "fresh"]),
-        "old_count": len([x for x in final_list if x.get("source") == "old"]),
-        "results": final_list,
-        "long_term_ips": long_term[:50],
-        "persistent_ips": persistent[:100]
+    return {
+        "ip": ip,
+        "ms": ms,
+        "status": "online" if online else "offline",
+        "tls_ok": tls_ok,
+        "http_ok": http_ok if host else None,
+        "http_status": http_status,
+        "colo": colo,
+        "source": source,
     }
 
-    save_json_file(CLEAN_IPS_FILE, output)
 
-    # 📝 آپدیت README
-    update_readme(output, len(persistent), len(long_term))
+def source_fields(source: str) -> tuple[str, str]:
+    meta = SOURCE_META.get(source, SOURCE_META["custom"])
+    return meta[0], meta[1]
 
-    print(f"\nDONE.")
-    print(f"   Fresh IPs today:  {output['fresh_count']}")
-    print(f"   Old IPs (still alive): {output['old_count']}")
-    print(f"   Persistent:       {output['persistent_count']}")
-    print(f"   Long-term:        {output['long_term_count']}")
-    print(f"   Total unique:     {len(final_list)}")
-    print(f"   Updated (unix):   {output['updated']}")
-    print(f"   Updated (UTC):    {datetime.datetime.utcfromtimestamp(output['updated'])}")
-    print("=" * 60)
+
+def load_history() -> dict[str, Any]:
+    return load_json(HISTORY_FILE, {"ips": {}, "last_updated": 0})
+
+
+def update_history(history: dict[str, Any], online: list[dict[str, Any]]) -> None:
+    cutoff = now_ts() - HISTORY_DAYS * 86400
+    ips = history.setdefault("ips", {})
+
+    for r in online:
+        ip = r["ip"]
+        e = ips.setdefault(ip, {
+            "first_seen": now_ts(),
+            "last_seen": now_ts(),
+            "online_count": 0,
+            "last_ms": None,
+            "source": r["source"],
+            "history": [],
+        })
+        e["last_seen"] = now_ts()
+        e["online_count"] = e.get("online_count", 0) + 1
+        e["last_ms"] = r["ms"]
+        e["source"] = r["source"]
+        e.setdefault("history", []).append(now_ts())
+        e["history"] = [x for x in e["history"] if x >= cutoff]
+
+    for ip in list(ips):
+        e = ips[ip]
+        e["online_count"] = len([x for x in e.get("history", []) if x >= cutoff])
+        if e.get("last_seen", 0) < cutoff:
+            del ips[ip]
+
+    history["last_updated"] = now_ts()
+
+
+def build_readme_stats(results: list[dict[str, Any]], tested_by_source: dict[str, int]) -> str:
+    counts: dict[str, dict[str, int]] = {}
+    for name in SOURCE_META:
+        counts[name] = {"online": 0, "total": tested_by_source.get(name, 0)}
+    for r in results:
+        s = r.get("source", "custom")
+        counts.setdefault(s, {"online": 0, "total": 0})
+        if r.get("status") == "online":
+            counts[s]["online"] += 1
+
+    lines = [
+        "<!-- AUTO_UPDATE_START -->",
+        "### 🤖 Matix Live Status",
+        "",
+        "| منبع | آنلاین | کل تست‌شده |",
+        "|---|---:|---:|",
+    ]
+    for s in ("fastly", "cloudflare", "railway", "vps", "custom"):
+        emoji, fa, _ = SOURCE_META[s]
+        lines.append(f"| {emoji} {fa} | {counts.get(s, {}).get('online', 0)} | {counts.get(s, {}).get('total', 0)} |")
+    lines += [
+        "",
+        f"- 🕐 آخرین اسکن: `{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`",
+        f"- ⚡ سقف latency: `{MAX_LATENCY_MS} ms`",
+        "- 🔐 اعتبارسنجی: TCP + TLS + HTTP",
+        "- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی",
+        "<!-- AUTO_UPDATE_END -->",
+    ]
+    return "\n".join(lines)
+
+
+def update_readme(results: list[dict[str, Any]], tested_by_source: dict[str, int]) -> None:
+    start, end = "<!-- AUTO_UPDATE_START -->", "<!-- AUTO_UPDATE_END -->"
+    block = build_readme_stats(results, tested_by_source)
+
+    try:
+        content = open(README_FILE, "r", encoding="utf-8").read() if os.path.exists(README_FILE) else "# Matix Scanner\n"
+        if start in content and end in content:
+            content = re.sub(re.escape(start) + r".*?" + re.escape(end), block, content, flags=re.S)
+        else:
+            content = content.rstrip() + "\n\n" + block + "\n"
+        with open(README_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as exc:
+        print(f"[WARN] README update failed: {exc}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Matix multi-source IP scanner")
+    parser.add_argument("--source", default=os.getenv("SCAN_SOURCE", "all"),
+                        choices=["all", "cloudflare", "fastly", "railway", "vps", "custom"])
+    parser.add_argument("--count", type=int, default=int(os.getenv("SCAN_COUNT", "600")))
+    args = parser.parse_args()
+
+    count = max(1, min(args.count, 5000))
+    source = args.source
+
+    print(f"Matix Scanner 4.0 | source={source} | count={count}")
+    try:
+        candidates = candidates_for(source, count)
+    except Exception as exc:
+        print(f"[ERROR] Candidate collection failed: {exc}")
+        return 1
+
+    # Deduplicate by IP while preserving the first trusted source.
+    dedup: dict[str, dict[str, str]] = {}
+    for item in candidates:
+        try:
+            ipaddress.ip_address(item["ip"])
+        except ValueError:
+            continue
+        dedup.setdefault(item["ip"], item)
+    candidates = list(dedup.values())
+
+    # Never scan arbitrary private/reserved/multicast/documentation addresses.
+    candidates = [
+        x for x in candidates
+        if isinstance(ipaddress.ip_address(x["ip"]), ipaddress.IPv4Address)
+        and ipaddress.ip_address(x["ip"]).is_global
+    ]
+
+    print(f"Candidates after validation: {len(candidates)}")
+
+    results: list[dict[str, Any]] = []
+    tested_by_source: dict[str, int] = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {pool.submit(test_candidate, item): item for item in candidates}
+        for n, future in enumerate(as_completed(futures), 1):
+            item = futures[future]
+            tested_by_source[item["source"]] = tested_by_source.get(item["source"], 0) + 1
+            try:
+                result = future.result()
+            except Exception as exc:
+                print(f"[WARN] test {item['ip']}: {exc}")
+                result = {
+                    "ip": item["ip"], "ms": None, "status": "offline",
+                    "tls_ok": False, "http_ok": False,
+                    "source": item["source"],
+                }
+            results.append(result)
+            if n % 100 == 0 or n == len(candidates):
+                print(f"Progress: {n}/{len(candidates)}")
+
+    online = [r for r in results if r["status"] == "online"]
+    online.sort(key=lambda r: (r["ms"] if r["ms"] is not None else 999999, -int(r.get("http_ok") is True)))
+
+    history = load_history()
+    update_history(history, online)
+    save_json(HISTORY_FILE, history)
+
+    # Preserve source identity in historical data. Do not publish stale IPs
+    # as "online": only currently verified results enter clean_ips.json.
+    final: list[dict[str, Any]] = []
+    for r in online:
+        e = history["ips"].get(r["ip"], {})
+        emoji, source_name = source_fields(r["source"])
+        count_seen = int(e.get("online_count", 1))
+        final.append({
+            "ip": r["ip"],
+            "ms": r["ms"],
+            "status": "online",
+            "colo": r.get("colo") or ("N/A" if r["source"] != "cloudflare" else None),
+            "source": r["source"],
+            "source_emoji": emoji,
+            "source_name": source_name,
+            "persistent": count_seen >= PERSISTENT_COUNT,
+            "long_term": count_seen >= LONG_TERM_COUNT,
+            "online_count": count_seen,
+            "tls_ok": bool(r.get("tls_ok")),
+            "http_ok": r.get("http_ok"),
+            "http_status": r.get("http_status"),
+        })
+        if len(final) >= MAX_RESULTS:
+            break
+
+    output = {
+        "updated": now_ts(),
+        "total_tested": len(candidates),
+        "online_count": len(final),
+        "results": final,
+        "source_stats": {
+            s: {
+                "tested": tested_by_source.get(s, 0),
+                "online": sum(1 for x in final if x["source"] == s),
+            }
+            for s in SOURCE_META
+        },
+        "scanner": {
+            "version": "4.0",
+            "max_latency_ms": MAX_LATENCY_MS,
+            "probes": PROBES,
+            "validation": "TCP+TLS+HTTP",
+            "cloudflare_policy": "small_secondary_source",
+        },
+    }
+    save_json(CLEAN_FILE, output)
+
+    # all_ips is a compact historical index, not a stale public result list.
+    all_data = load_json(ALL_FILE, {"ips": {}, "last_updated": 0})
+    all_ips = all_data.setdefault("ips", {})
+    for r in online:
+        old = all_ips.get(r["ip"], {})
+        all_ips[r["ip"]] = {
+            **old,
+            "last_seen": now_ts(),
+            "last_ms": r["ms"],
+            "source": r["source"],
+            "online_count": history["ips"].get(r["ip"], {}).get("online_count", 1),
+        }
+    all_data["last_updated"] = now_ts()
+    save_json(ALL_FILE, all_data)
+
+    update_readme(final, tested_by_source)
+    print(f"ONLINE: {len(final)} / {len(candidates)}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

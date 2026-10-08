@@ -1,194 +1,141 @@
-# Matix Scanner — Cloudflare IP Scanner
+# Matix Scanner — Multi-Source VPN-Oriented IP Scanner
 
-> In the name of God
+> بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ 🤍
 
-Find clean, fast Cloudflare IPs — automatically, every 10 minutes.
+Matix Scanner یک اسکنر چندمنبعی برای پیدا کردن IPهای **واقعاً قابل‌دسترسی** است.
 
-🌐 Live Demo: [https://imatixofficel.github.io/Scanner-matix/](https://imatixofficel.github.io/Scanner-matix/)
+هدف نسخه 4 این است که به‌جای تکیه زیاد روی Cloudflare، از منابع معتبرتری مثل **Fastly** استفاده کند و Cloudflare را فقط به‌عنوان منبع فرعی نگه دارد.
 
----
+## منابع
 
-## What is this?
+| منبع | وضعیت |
+|---|---|
+| ⚡ Fastly | منبع اصلی |
+| ☁️ Cloudflare | منبع فرعی با سهم کم |
+| 🖥️ Railway | فقط از hostname رسمی resolve می‌شود؛ رنج عمومی ثابت ادعا نمی‌شود |
+| 🛡️ VPS | فقط IPهایی که خودت در `custom_ips.txt` وارد می‌کنی |
+| ✍️ Custom | لیست دستی |
 
-Matix Scanner is a simple, free tool that finds working Cloudflare IPs for your VLESS, Trojan, or Shadowsocks configs.
+Fastly فهرست عمومی IPهای خودش را به‌صورت رسمی منتشر می‌کند. Cloudflare نیز رنج‌های رسمی خود را منتشر می‌کند. Railway برای ورودی عمومی یک رنج ثابت رسمی ارائه نمی‌کند، بنابراین پروژه رنج‌های غیررسمی را به‌عنوان Railway قبول نمی‌کند.
 
-It runs quietly in the background every 10 minutes, tests thousands of IPs with real TCP+TLS handshakes and HTTP requests, checks their real download speed, and keeps only the ones that are actually alive and fast.
+## تست کیفیت
 
-No fake data. No duplicates. No API keys. Just clean, tested IPs..
+هر IP فقط وقتی وارد `data/clean_ips.json` می‌شود که:
 
----
+1. اتصال TCP به پورت 443 برقرار شود.
+2. TLS handshake موفق باشد.
+3. در منابعی که hostname معتبر دارند، پاسخ HTTP معتبر دریافت شود.
+4. latency اندازه‌گیری‌شده حداکثر 1000ms باشد.
+5. IP از نوع global IPv4 باشد و private/reserved/documentation نباشد.
+6. IP فعلی در همین اجرای اسکن آنلاین باشد؛ IP قدیمی دیگر به‌عنوان `online` منتشر نمی‌شود.
 
-## Why use it?؟
+### نکته مهم برای VPN
 
-- Real testing — not a random list copied from somewhere else
-- Always fresh — updated every 10 minutes, 24/7
-- Speed-tested — the top 100 IPs are benchmarked for download speed
-- Smart tracking — IPs that stay alive over time get marked as persistent
-- Zero duplicates — every IP appears only once
-- Free forever — no backend, no server, no cost
+`online` بودن یک IP به معنی «سرور VLESS/WireGuard/Trojan بودن» نیست.
 
----
+برای CDNهایی مثل Cloudflare و Fastly، IP معمولاً یک edge است و استفاده از آن در کانفیگ VPN به **SNI/Host/transport درست** نیاز دارد. این پروژه فقط سلامت شبکه و HTTPS endpoint را تأیید می‌کند.
 
-## How to use it
+Latency هم از **GitHub Actions runner** اندازه‌گیری می‌شود، نه از اینترنت موبایل یا سیستم شما؛ بنابراین برای انتخاب نهایی، روی شبکه خودتان هم تست کنید.
 
-1. Go to 👉 https://imatixofficel.github.io/Scanner-matix/
-2. Click Start Scan
-3. Pick how many IPs you want
-4. Copy the best ones into your config
+## خروجی
 
-That's it.
+هر نتیجه این فیلدها را دارد:
 
----
-
-## What you get
-
-Every scan gives you a structured list like this:
-
-`json
+```json
 {
-"ip": "104.25.195.64",
-"ms": 82,
-"status": "online",
-"colo": "SEA",
-"speed_mbps": 17.55,
-"persistent": false,
-"online_count": 1
+  "ip": "1.2.3.4",
+  "ms": 120,
+  "status": "online",
+  "colo": "IAD",
+  "source": "fastly",
+  "source_emoji": "⚡",
+  "source_name": "فستلی",
+  "persistent": false,
+  "long_term": false,
+  "online_count": 1,
+  "tls_ok": true,
+  "http_ok": true
 }
-# Matix Scanner — Cloudflare IP Scanner
+```
 
-> **In the name of God**
+## اجرای دستی GitHub Actions
 
-**Find clean, fast Cloudflare IPs — automatically, every 10 minutes.**
+از مسیر **Actions → Matix Multi-Source IP Scanner → Run workflow** می‌توانی:
 
-🌐 **Live Demo:** [https://imatixofficel.github.io/Scanner-matix/](https://imatixofficel.github.io/Scanner-matix/)
+- منبع را انتخاب کنی: `all / fastly / cloudflare / railway / vps / custom`
+- تعداد IPهای مورد تست را تعیین کنی.
 
----
+اجرای زمان‌بندی‌شده هر **15 دقیقه** انجام می‌شود.
 
-## What is this?
+README در هر اجرا timestamp جدید می‌گیرد تا تغییر repository ثبت شود:
 
-Matix Scanner is a simple, free tool that finds working Cloudflare IPs for your VLESS, Trojan, or Shadowsocks configs.
+`<!-- AUTO_UPDATE_START -->`
 
-It runs quietly in the background every 10 minutes, tests thousands of IPs with real TCP+TLS handshakes and HTTP requests, checks their real download speed, and keeps only the ones that are actually alive and fast.
+`<!-- AUTO_UPDATE_END -->`
 
-No fake data. No duplicates. No API keys. Just clean, tested IPs.
+## custom_ips.txt
 
----
+فرمت‌ها:
 
-## Why use it?
+```text
+1.1.1.1,cloudflare
+8.8.8.8,custom
+1.2.3.4,vps
+```
 
-- Real testing — not a random list copied from somewhere else
-- Always fresh — updated every 10 minutes, 24/7
-- Speed-tested — the top 100 IPs are benchmarked for download speed
-- Smart tracking — IPs that stay alive over time get marked as persistent
-- Zero duplicates — every IP appears only once
-- Free forever — no backend, no server, no cost
+فقط IPهایی را وارد کن که مجاز به تست و استفاده از آن‌ها هستی.
 
----
+## نصب
 
-## How to use it
+Python 3.11 کافی است و هیچ package خارجی لازم نیست:
 
-1. Go to 👉 https://imatixofficel.github.io/Scanner-matix/
-2. Click Start Scan
-3. Pick how many IPs you want
-4. Copy the best ones into your config
+```bash
+python scanner.py --source all --count 600
+```
 
-That's it.
+یا:
 
----
+```bash
+python scanner.py --source fastly --count 500
+```
 
-## What you get
+## ساختار
 
-Every scan gives you a structured list like this:
-json
-{
-"ip": "104.25.195.64",
-"ms": 82,
-"status": "online",
-"colo": "SEA",
-"speed_mbps": 17.55,
-"persistent": false,
-"online_count": 1
-}
-
-
-· ms — how fast the IP responds
-· colo — which Cloudflare edge answered (SEA, FRA, AMS, …)
-· speed_mbps — actual download speed
-· persistent — whether this IP has been stable over time
-
----
-
-Persistent IPs
-
-Some IPs keep working for days or weeks. Matix tracks these automatically.
-
-If an IP is seen online 3 or more times in the last 7 days, it gets marked as persistent and highlighted with a diamond in the UI.
-
-Persistent IPs tend to be more stable and more reliable than fresh ones.
-
----
-
-How it works behind the scenes
-
-Every 10 minutes, Matix:
-
-1. Samples 7,500 IPs from Cloudflare ranges
-2. Tests each one with real TCP + TLS
-3. Verifies with real HTTP requests
-4. Benchmarks speed on the best 100
-5. Removes duplicates
-6. Tracks persistent IPs
-7. Saves the results
-8. Publishes them on GitHub Pages
-
-Everything runs on GitHub Actions — completely free.
-
----
-
-Good to know
-
-· Latency is measured from GitHub servers, not from your own network. Your real ping might be different — always test on your own device if you can.
-· If no commit is made for 60 days, GitHub may pause the automatic scans. Just make a small change occasionally to keep it running.
-· The repository must stay Public to keep GitHub Actions free.
-· No data is collected, no keys are stored, nothing is tracked.
-
----
-
-Built with
-
-· Python 3.11 — the scanner
-· Vanilla JavaScript — the website
-· GitHub Actions — the automation
-· GitHub Pages — the hosting
-· Vazirmatn + Manrope — the fonts
-
----
-
-Live Demo
-
-👉 https://imatixofficel.github.io/Scanner-matix/
-
----
-
-Connect with me
-
-· 📺 YouTube: https://youtube.com/@i.matix7
-· ✈️ Telegram: https://t.me/Imatix7
-
----
-
-
+```text
+Scanner-matix/
+├── .github/workflows/scan.yml
+├── data/
+│   ├── clean_ips.json
+│   ├── all_ips.json
+│   └── history.json
+├── custom_ips.txt
+├── scanner.py
+├── app.js
+├── index.html
+├── style.css
+├── requirements.txt
+└── README.md
+```
 
 <!-- AUTO_UPDATE_START -->
 ### 🤖 Matix Live Status
 
-| 📊 آمار | مقدار |
-|---|---|
-| 🕐 آخرین اسکن | `2026-10-08 11:02:33 UTC` |
-| ✅ IPهای آنلاین | `2000` |
-| 💎 ماندگار | `15949` |
-| 👑 بلندمدت | `3053` |
-| 🔄 کل تست‌شده | `7500` |
-| 📦 تاریخی | `323884` |
-| 🌐 بروزرسانی خودکار | هر ۱۵ دقیقه |
+| منبع | آنلاین | کل تست‌شده |
+|---|---:|---:|
+| ⚡ فستلی | 0 | 0 |
+| ☁️ کلادفلر | 0 | 0 |
+| 🖥️ Railway | 0 | 0 |
+| 🛡️ VPS دستی | 0 | 0 |
+| ✍️ دستی | 0 | 0 |
+
+- 🕐 آخرین اسکن: `not scanned yet`
+- ⚡ سقف latency: `1000 ms`
+- 🔐 اعتبارسنجی: TCP + TLS + HTTP
+- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
 <!-- AUTO_UPDATE_END -->
+
+## لینک پروژه
+
+https://imatixofficel.github.io/Scanner-matix/
+
+Built by **Matix**.

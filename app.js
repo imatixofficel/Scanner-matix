@@ -302,9 +302,14 @@
         var pingText = item.ms != null ? item.ms + ' ms' : '—';
 
         tr.innerHTML =
+          var sourceText = (item.source_emoji || '✍️') + ' ' +
+          (item.source_name || item.source || 'نامشخص');
+
+        tr.innerHTML =
           '<td>' + (index + 1) + '</td>' +
           '<td class="ip-cell">' + item.ip + '</td>' +
           '<td class="ping-cell">' + pingText + '</td>' +
+          '<td class="source-cell">' + sourceText + '</td>' +
           '<td>' + statusPill + '</td>' +
           '<td><button class="copy-row-btn" data-ip="' + item.ip + '">Copy</button></td>';
 
@@ -317,7 +322,7 @@
     if (resultsSummary) {
       resultsSummary.textContent =
         lastResults.length + ' IP | 💎 ' + persistentCount +
-        ' persistent | 👑 ' + longTermCount + ' long-term';
+        ' persistent | 👑 ' + longTermCount + ' long-term | 🔐 TCP+TLS+HTTP';
     }
 
     if (resultsWrap) resultsWrap.hidden = false;
@@ -330,13 +335,13 @@
     if (resultsWrap) resultsWrap.hidden = true;
     setStatus('', null);
 
-    showEarth('در حال دریافت داده‌های Cloudflare', 'اتصال به سرور Matix...');
+    showEarth('در حال دریافت IP از چند منبع', 'اتصال به سرور Matix...');
 
     var subMessages = [
-      'در حال اسکن IPهای کلادفلر...',
-      'بررسی پاسخ‌دهی سرورها...',
-      'محاسبه سرعت و پینگ...',
-      'در حال آماده‌سازی نتایج...'
+      'در حال بررسی Fastly و منابع معتبر...',
+      'Cloudflare فقط به‌صورت محدود بررسی می‌شود...',
+      'تست واقعی TCP + TLS + HTTP و محاسبه latency...',
+      'در حال آماده‌سازی بهترین IPها...'
     ];
     var subIdx = 0;
     var subTimer = setInterval(function () {

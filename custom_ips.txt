@@ -1,0 +1,12 @@
+# Matix Scanner - custom IPs
+# Format:
+#   IP
+#   IP,source
+#   IP source
+#
+# Supported source labels: cloudflare, fastly, railway, vps, custom
+# Put only IPs you are authorized to test/use.
+#
+# Example:
+1.1.1.1,cloudflare
+# 203.0.113.10,vps
