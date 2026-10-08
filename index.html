@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Matix — Multi-Source IP Scanner &amp; Config Builder</title>
-<meta name="description" content="ابزار Matix برای بررسی واقعی IPهای منابع معتبر (Fastly، Cloudflare و ...) و ساخت دسته‌ای کانفیگ‌های VLESS.">
+<meta name="description" content="ابزار Matix برای بررسی واقعی IPهای منابع معتبر (Fastly، Cloudflare، CloudFront، Google) و ساخت دسته‌ای کانفیگ‌های VLESS.">
 <meta name="theme-color" content="#08070f">
 <link rel="icon" href="favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -87,7 +87,7 @@
     <section id="page-scanner" class="page is-active">
       <div class="page-head">
         <h1>Multi-Source IP Scanner</h1>
-        <p>بررسی IPهای منابع رسمی (Fastly، Cloudflare و ...) و نمایش نتایج بر اساس Latency.</p>
+        <p>بررسی IPهای منابع رسمی (Fastly، Cloudflare، CloudFront، Google) و نمایش نتایج بر اساس Latency.</p>
       </div>
 
       <div id="last-update-badge" class="last-update-badge" hidden></div>
@@ -123,6 +123,18 @@
             <option value="50">50</option>
             <option value="100">100</option>
             <option value="200">200</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="source-filter">منبع IP</label>
+          <select id="source-filter">
+            <option value="all">همه منابع</option>
+            <option value="fastly">⚡ فستلی</option>
+            <option value="cloudflare">☁️ کلودفلر</option>
+            <option value="cloudfront">🟧 کلودفرانت (آمازون)</option>
+            <option value="google">🔷 گوگل</option>
+            <option value="railway">🖥️ Railway</option>
+            <option value="pinned">📌 فقط پین‌شده‌ها</option>
           </select>
         </div>
         <button id="start-scan-btn" class="btn btn-primary">

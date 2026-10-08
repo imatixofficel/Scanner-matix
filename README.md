@@ -4,19 +4,22 @@
 
 Matix Scanner یک اسکنر چندمنبعی برای پیدا کردن IPهای **واقعاً قابل‌دسترسی** است.
 
-هدف نسخه 4 این است که به‌جای تکیه زیاد روی Cloudflare، از منابع معتبرتری مثل **Fastly** استفاده کند و Cloudflare را فقط به‌عنوان منبع فرعی نگه دارد.
+هدف نسخه 4 این است که از چند منبع رسمی (**Fastly، Cloudflare، CloudFront، Google**) IP جمع کند و کاربر خودش منبع را انتخاب کند.
 
 ## منابع
 
 | منبع | وضعیت |
 |---|---|
-| ⚡ Fastly | منبع اصلی |
-| ☁️ Cloudflare | منبع فرعی با سهم کم |
+| ⚡ Fastly | رنج رسمی (API خود Fastly) |
+| ☁️ Cloudflare | رنج رسمی (API خود Cloudflare) |
+| 🟧 CloudFront (آمازون) | رنج رسمی `ip-ranges.json` با فیلتر `CLOUDFRONT` |
+| 🔷 Google | رنج رسمی `goog.json` (درصد IP سالم کمتر است، چون فقط بخشی از رنج وب‌سرور است) |
 | 🖥️ Railway | فقط از hostname رسمی resolve می‌شود؛ رنج عمومی ثابت ادعا نمی‌شود |
-| 🛡️ VPS | فقط IPهایی که خودت در `custom_ips.txt` وارد می‌کنی |
-| ✍️ Custom | لیست دستی |
+| 🛡️ VPS / ✍️ Custom | فقط IPهایی که خودت در `custom_ips.txt` وارد می‌کنی |
 
-Fastly فهرست عمومی IPهای خودش را به‌صورت رسمی منتشر می‌کند. Cloudflare نیز رنج‌های رسمی خود را منتشر می‌کند. Railway برای ورودی عمومی یک رنج ثابت رسمی ارائه نمی‌کند، بنابراین پروژه رنج‌های غیررسمی را به‌عنوان Railway قبول نمی‌کند.
+سهم هر منبع در حالت `all`: Fastly 35٪ · Cloudflare 30٪ · CloudFront 15٪ · Google 8٪ · Custom 10٪ · Railway 2٪ (در `DEFAULT_MIX` داخل `scanner.py` قابل تغییر است).
+
+در صفحه وب، بالای لیست می‌توانی **منبع** را انتخاب کنی (همه / Fastly / Cloudflare / CloudFront / Google / Railway / فقط پین‌شده‌ها). لیست همیشه از **کمترین پینگ** شروع می‌شود.
 
 ## تست کیفیت
 
@@ -67,10 +70,23 @@ Latency هم از **GitHub Actions runner** اندازه‌گیری می‌شو�
 }
 ```
 
+## نصب با یک دستور از GitHub (بدون نیاز به دانلود پروژه)
+
+```bash
+pip install https://github.com/imatixofficel/Scanner-matix/archive/refs/heads/main.zip
+matix
+```
+
+- Python 3.9 یا بالاتر لازم است؛ `git` لازم نیست. در ویندوز اگر `pip` شناخته نشد: `py -m pip install ...`
+- آپدیت: همان دستور را با `--upgrade` دوباره بزن.
+- اگر `matix` شناخته نشد: `python -m matix`
+- بدون نصب دائمی: `pipx run --spec https://github.com/imatixofficel/Scanner-matix/archive/refs/heads/main.zip matix`
+
 ## اسکنر ترمینال (CMD / PowerShell / Terminal)
 
 ```bash
-python matix.py
+matix                # بعد از نصب با pip
+python matix.py      # داخل پوشه پروژه
 ```
 
 در ویندوز داخل پوشه پروژه فقط `matix` هم کافی است. لوگوی Matix نمایش داده می‌شود و از منو منبع، تعداد تست، حالت (سریع‌ترین / سراسر دنیا) و تعداد IP دلخواه را انتخاب می‌کنی؛ بعد از اسکن می‌توانی کپی یا ذخیره کنی.
@@ -87,29 +103,16 @@ python matix.py --source fastly --count 600 --top 20 --diverse --save ips.txt --
 
 از مسیر **Actions → Matix Multi-Source IP Scanner → Run workflow** می‌توانی:
 
-- منبع را انتخاب کنی: `all / fastly / cloudflare / railway / vps / custom`
+- منبع را انتخاب کنی: `all / fastly / cloudflare / cloudfront / google / trusted / railway / vps / custom`
 - تعداد IPهای مورد تست را تعیین کنی.
 
 اجرای زمان‌بندی‌شده هر **15 دقیقه** انجام می‌شود.
 
 README در هر اجرا timestamp جدید می‌گیرد تا تغییر repository ثبت شود:
 
-`<!-- AUTO_UPDATE_START -->
-### 🤖 Matix Live Status
+`<!-- AUTO_UPDATE_START -->`
 
-| منبع | آنلاین | کل تست‌شده |
-|---|---:|---:|
-| ⚡ فستلی | 66 | 608 |
-| ☁️ کلادفلر | 13 | 83 |
-| 🖥️ Railway | 0 | 3 |
-| 🛡️ VPS دستی | 0 | 0 |
-| ✍️ دستی | 0 | 0 |
-
-- 🕐 آخرین اسکن: `2026-10-08 11:45:47 UTC`
-- ⚡ سقف latency: `1000 ms`
-- 🔐 اعتبارسنجی: TCP + TLS + HTTP
-- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
-<!-- AUTO_UPDATE_END -->`
+`<!-- AUTO_UPDATE_END -->`
 
 ## custom_ips.txt
 
@@ -146,6 +149,7 @@ Scanner-matix/
 │   └── clean_ips.json
 ├── custom_ips.txt
 ├── trusted_ips.txt
+├── pyproject.toml
 ├── scanner.py
 ├── matix.py
 ├── matix.bat
@@ -161,16 +165,18 @@ Scanner-matix/
 
 | منبع | آنلاین | کل تست‌شده |
 |---|---:|---:|
-| ⚡ فستلی | 66 | 608 |
-| ☁️ کلادفلر | 13 | 83 |
-| 🖥️ Railway | 0 | 3 |
+| ⚡ فستلی | 0 | 0 |
+| ☁️ کلادفلر | 0 | 0 |
+| 🟧 کلودفرانت | 0 | 0 |
+| 🔷 گوگل | 0 | 0 |
+| 🖥️ Railway | 0 | 0 |
 | 🛡️ VPS دستی | 0 | 0 |
 | ✍️ دستی | 0 | 0 |
 
-- 🕐 آخرین اسکن: `2026-10-08 11:45:47 UTC`
+- 🕐 آخرین اسکن: `not scanned yet`
 - ⚡ سقف latency: `1000 ms`
 - 🔐 اعتبارسنجی: TCP + TLS + HTTP
-- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی
+- 🌍 منابع: Fastly · Cloudflare · CloudFront · Google (رنج‌های رسمی)
 <!-- AUTO_UPDATE_END -->
 
 ## لینک پروژه

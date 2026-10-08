@@ -117,6 +117,7 @@
      ========================================================== */
   var startScanBtn    = $('#start-scan-btn');
   var ipCountSelect   = $('#ip-count');
+  var sourceSelect    = $('#source-filter');
   var earthLoader     = $('#earth-loader');
   var earthTitle      = $('#earth-status-title');
   var earthSub        = $('#earth-status-sub');
@@ -271,13 +272,8 @@
 
   /* ---- رندر جدول ---- */
   function renderResults(results) {
+    // کمترین پینگ همیشه اول لیست است.
     lastResults = results.slice().sort(function (a, b) {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      if (a.long_term && !b.long_term) return -1;
-      if (!a.long_term && b.long_term) return 1;
-      if (a.persistent && !b.persistent) return -1;
-      if (!a.persistent && b.persistent) return 1;
       return (a.ms == null ? 99999 : a.ms) - (b.ms == null ? 99999 : b.ms);
     });
 
@@ -341,7 +337,7 @@
 
     var subMessages = [
       'در حال بررسی Fastly و منابع معتبر...',
-      'Cloudflare فقط به‌صورت محدود بررسی می‌شود...',
+      'Cloudflare، CloudFront و Google هم بررسی می‌شوند...',
       'تست واقعی TCP + TLS + HTTP و محاسبه latency...',
       'در حال آماده‌سازی بهترین IPها...'
     ];
@@ -372,10 +368,21 @@
             hideEarth();
 
             var limit = parseInt(ipCountSelect.value, 10) || 20;
-            var results = (data.results || data.ips || []).slice(0, limit);
+            var wanted = sourceSelect ? sourceSelect.value : 'all';
+            var results = (data.results || data.ips || []).filter(function (x) {
+              if (wanted === 'all') return true;
+              if (wanted === 'pinned') return !!x.pinned;
+              return x.source === wanted;
+            });
+            results.sort(function (a, b) {
+              return (a.ms == null ? 99999 : a.ms) - (b.ms == null ? 99999 : b.ms);
+            });
+            results = results.slice(0, limit);
 
             if (!results.length) {
-              setStatus('لیست IP خالی است. لطفاً بعداً تلاش کن.', 'error');
+              setStatus(wanted === 'all'
+                ? 'لیست IP خالی است. لطفاً بعداً تلاش کن.'
+                : 'برای این منبع الان IP سالمی نیست؛ منبع دیگری را انتخاب کن.', 'error');
               startScanBtn.disabled = false;
               return;
             }

@@ -56,6 +56,9 @@ def dim(text: str) -> str:
     return f"\x1b[2m{text}\x1b[0m" if USE_COLOR else text
 
 
+SOURCE_LABELS = {"cloudflare": "Cloudflare", "fastly": "Fastly", "cloudfront": "CloudFront",
+                 "google": "Google", "railway": "Railway", "vps": "VPS", "custom": "Custom"}
+
 LOGO_LETTERS = {
     "M": ["███╗   ███╗", "████╗ ████║", "██╔████╔██║", "██║╚██╔╝██║", "██║ ╚═╝ ██║", "╚═╝     ╚═╝"],
     "A": [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
@@ -73,7 +76,7 @@ def banner() -> None:
         print("  " + c(row, GRADIENT[i], bold=True))
     print()
     print("  " + c("Multi-Source IP Scanner", 183, bold=True) + dim("  •  TCP + TLS + HTTP + CDN proof"))
-    print("  " + dim("Fastly · Cloudflare · Trusted pins · Custom  —  measured from your own network"))
+    print("  " + dim("Fastly · Cloudflare · CloudFront · Google · Pins  —  measured from your own network"))
     print()
 
 
@@ -180,7 +183,7 @@ def show_table(rows: list[dict[str, Any]]) -> None:
     print("  " + dim("─" * (len(head) - 2)))
     for i, r in enumerate(rows, 1):
         src = scanner.SOURCE_META.get(r["source"], scanner.SOURCE_META["custom"])
-        name = {"cloudflare": "Cloudflare", "fastly": "Fastly", "railway": "Railway"}.get(r["source"], r["source"].title())
+        name = SOURCE_LABELS.get(r["source"], r["source"].title())
         colo = r.get("colo") or "?"
         country = r.get("country")
         loc = f"{colo} · {country}" if country else colo
@@ -231,10 +234,12 @@ def save_file(path: str, rows: list[dict[str, Any]]) -> None:
 # --------------------------------------------------------------------------
 def interactive_settings() -> dict[str, Any]:
     source = menu("Source", [
-        ("all", "Smart mix   — Fastly 60% · Cloudflare 10% · rest custom/railway  (recommended)"),
-        ("fastly", "Fastly      — main source"),
-        ("cloudflare", "Cloudflare  — secondary source"),
-        ("trusted", "Trusted     — only the pinned IPs from trusted_ips.txt (fast)"),
+        ("all", "Smart mix   — Fastly · Cloudflare · CloudFront · Google  (recommended)"),
+        ("fastly", "Fastly"),
+        ("cloudflare", "Cloudflare"),
+        ("cloudfront", "CloudFront  (Amazon)"),
+        ("google", "Google"),
+        ("trusted", "Trusted     — only the pinned IPs (fast)"),
         ("custom", "Custom      — IPs from custom_ips.txt"),
     ])
     count = 0
@@ -274,7 +279,8 @@ def action_loop(results: list[dict[str, Any]], rows: list[dict[str, Any]], top: 
 def main() -> int:
     init_terminal()
     p = argparse.ArgumentParser(description="Matix Scanner CLI")
-    p.add_argument("--source", choices=["all", "fastly", "cloudflare", "railway", "vps", "custom", "trusted"])
+    p.add_argument("--source", choices=["all", "fastly", "cloudflare", "cloudfront", "google",
+                                        "railway", "vps", "custom", "trusted"])
     p.add_argument("--count", type=int, default=600, help="how many IPs to test")
     p.add_argument("--top", type=int, default=20, help="how many IPs to show/save")
     p.add_argument("--diverse", action="store_true", help="spread results across different locations")
@@ -316,9 +322,14 @@ def main() -> int:
     return 0 if rows else 2
 
 
-if __name__ == "__main__":
+def cli() -> int:
+    """Entry point used by the `matix` command."""
     try:
-        raise SystemExit(main())
+        return main()
     except KeyboardInterrupt:
         print()
-        raise SystemExit(130)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())

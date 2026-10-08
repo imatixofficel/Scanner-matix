@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matix-scanner"
+version = "4.1.0"
+description = "Matix - multi-source CDN IP scanner (Fastly, Cloudflare, CloudFront, Google) with a terminal UI"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+matix = "matix:cli"
+
+[tool.setuptools]
+py-modules = ["scanner", "matix"]

@@ -8,7 +8,7 @@ network ranges and validates candidates with TCP + TLS + HTTP.
 IMPORTANT:
 - A successful TLS/HTTP test proves the IP is reachable as a web endpoint.
 - It does NOT prove that the IP is a working VLESS/WireGuard/Trojan server.
-- CDN IPs (Cloudflare/Fastly) normally need the correct SNI/Host in a VPN config.
+- CDN IPs (Cloudflare/Fastly/CloudFront) normally need the correct SNI/Host in a VPN config.
 """
 from __future__ import annotations
 
@@ -45,14 +45,6 @@ PREV_RECHECK = 250  # previous winners that are re-tested on every run
 PERSISTENT_COUNT = 5
 LONG_TERM_COUNT = 30
 MAX_RESULTS = 1500
-
-# Keep Cloudflare small because it is not the primary source for this project.
-DEFAULT_SAMPLE_LIMITS = {
-    "cloudflare": 80,
-    "fastly": 500,
-    "railway": 30,
-    "custom": 1000,
-}
 
 # Built-in snapshot of the officially published ranges. It is used ONLY when the
 # official API cannot be reached (blocked network, outage). Every candidate is
@@ -117,6 +109,8 @@ COLO_COUNTRY = {
 SOURCE_META = {
     "cloudflare": ("☁️", "کلادفلر", "https://www.cloudflare.com"),
     "fastly": ("⚡", "فستلی", "https://www.fastly.com"),
+    "cloudfront": ("🟧", "کلودفرانت", "https://aws.amazon.com/cloudfront/"),
+    "google": ("🔷", "گوگل", "https://www.google.com"),
     "railway": ("🖥️", "Railway", "https://railway.com"),
     "vps": ("🛡️", "VPS دستی", ""),
     "custom": ("✍️", "دستی", ""),
@@ -133,11 +127,38 @@ RAILWAY_HOSTS = (
 SOURCE_URLS = {
     "cloudflare": "https://api.cloudflare.com/client/v4/ips",
     "fastly": "https://api.fastly.com/public-ip-list",
+    "cloudfront": "https://ip-ranges.amazonaws.com/ip-ranges.json",
+    "google": "https://www.gstatic.com/ipranges/goog.json",
 }
+
+# Sources whose candidates are sampled from officially published CIDR lists.
+RANGE_SOURCES = ("fastly", "cloudflare", "cloudfront", "google")
+
+# Share of the total --count budget per source in the "all" mode.
+DEFAULT_MIX = {
+    "fastly": 0.35,
+    "cloudflare": 0.30,
+    "cloudfront": 0.15,
+    "google": 0.08,
+    "railway": 0.02,
+    "custom": 0.10,
+}
+
+# Built-in default pins (used when trusted_ips.txt is not next to the script,
+# e.g. when Matix was installed with pip).
+DEFAULT_TRUSTED = [
+    ("1.1.1.1", "cloudflare"), ("1.0.0.1", "cloudflare"),
+    ("104.16.132.229", "cloudflare"), ("172.67.74.152", "cloudflare"),
+    ("151.101.1.140", "fastly"), ("151.101.65.140", "fastly"),
+    ("151.101.129.140", "fastly"), ("151.101.193.140", "fastly"),
+    ("199.232.69.194", "fastly"),
+]
 
 SOURCE_TEST = {
     "cloudflare": ("cloudflare.com", "/cdn-cgi/trace"),
     "fastly": ("www.fastly.com", "/"),
+    "cloudfront": ("d111111abcdef8.cloudfront.net", "/"),
+    "google": ("www.google.com", "/generate_204"),
     "railway": ("railway.app", "/"),
     "vps": (None, "/"),
     "custom": (None, "/"),
@@ -222,17 +243,26 @@ def sample_networks(cidrs: list[str], limit: int) -> list[str]:
 
 
 def get_ranges(source: str) -> list[str]:
-    """Official ranges first; built-in snapshot only if the API is unreachable."""
+    """Official ranges first; built-in snapshot (if any) only when the API is unreachable."""
     try:
+        data = fetch_json(SOURCE_URLS[source])
         if source == "cloudflare":
-            ranges = fetch_json(SOURCE_URLS["cloudflare"]).get("result", {}).get("ipv4_cidrs", [])
-        else:
-            ranges = fetch_json(SOURCE_URLS["fastly"]).get("addresses", [])
+            ranges = data.get("result", {}).get("ipv4_cidrs", [])
+        elif source == "fastly":
+            ranges = data.get("addresses", [])
+        elif source == "cloudfront":
+            ranges = [p["ip_prefix"] for p in data.get("prefixes", [])
+                      if p.get("service") == "CLOUDFRONT" and "ip_prefix" in p]
+        else:  # google
+            ranges = [p["ipv4Prefix"] for p in data.get("prefixes", []) if "ipv4Prefix" in p]
         if ranges:
             return ranges
     except Exception as exc:  # network blocked, HTTP error, bad JSON ...
-        print(f"[WARN] {source}: official range list unavailable ({exc}); using built-in snapshot")
-    return list(FALLBACK_RANGES[source])
+        print(f"[WARN] {source}: official range list unavailable ({exc})")
+    fallback = FALLBACK_RANGES.get(source, [])
+    if fallback:
+        print(f"[WARN] {source}: using built-in snapshot")
+    return list(fallback)
 
 
 def get_cloudflare() -> list[str]:
@@ -286,11 +316,14 @@ def parse_ip_file(path: str, pinned: bool = False) -> list[dict[str, Any]]:
 
 
 def parse_custom_file() -> list[dict[str, Any]]:
-    return parse_ip_file(CUSTOM_FILE)
+    path = CUSTOM_FILE if os.path.exists(CUSTOM_FILE) else os.path.join(os.getcwd(), "custom_ips.txt")
+    return parse_ip_file(path)
 
 
 def parse_trusted_file() -> list[dict[str, Any]]:
-    return parse_ip_file(TRUSTED_FILE, pinned=True)
+    if os.path.exists(TRUSTED_FILE):
+        return parse_ip_file(TRUSTED_FILE, pinned=True)
+    return [{"ip": ip, "source": src, "pinned": True} for ip, src in DEFAULT_TRUSTED]
 
 
 def candidates_for(source: str, limit: int) -> list[dict[str, Any]]:
@@ -300,11 +333,8 @@ def candidates_for(source: str, limit: int) -> list[dict[str, Any]]:
     if source == "trusted":
         return parse_trusted_file()[:limit]
 
-    if source == "cloudflare":
-        return [{"ip": ip, "source": "cloudflare"} for ip in sample_networks(get_cloudflare(), limit)]
-
-    if source == "fastly":
-        return [{"ip": ip, "source": "fastly"} for ip in sample_networks(get_fastly(), limit)]
+    if source in RANGE_SOURCES:
+        return [{"ip": ip, "source": source} for ip in sample_networks(get_ranges(source), limit)]
 
     if source == "railway":
         return [{"ip": ip, "source": "railway"} for ip in resolve_hosts(RAILWAY_HOSTS)[:limit]]
@@ -314,26 +344,22 @@ def candidates_for(source: str, limit: int) -> list[dict[str, Any]]:
         return [x for x in parse_custom_file() if x["source"] == "vps"][:limit]
 
     if source == "all":
-        # --count is the TOTAL candidate budget.
-        # Fastly gets the largest share; Cloudflare stays deliberately small.
-        allocations = {
-            "fastly": max(1, int(limit * 0.60)),
-            "cloudflare": max(1, int(limit * 0.10)),
-            "railway": max(1, int(limit * 0.05)),
-            "custom": max(1, limit - int(limit * 0.75)),
-        }
+        # --count is the TOTAL candidate budget, split by DEFAULT_MIX.
         groups: list[dict[str, Any]] = []
-        for name, quota in allocations.items():
+        for name, share in DEFAULT_MIX.items():
             try:
-                groups.extend(candidates_for(name, quota))
+                groups.extend(candidates_for(name, max(1, int(limit * share))))
             except Exception as exc:
                 print(f"[WARN] source={name}: {exc}")
-        # Fill unused slots from Fastly if optional sources have no candidates.
-        if len(groups) < limit:
-            try:
-                groups.extend(candidates_for("fastly", limit - len(groups)))
-            except Exception as exc:
-                print(f"[WARN] fastly refill: {exc}")
+        # Fill unused slots (e.g. an empty custom list) from Fastly + Cloudflare.
+        missing = limit - len(groups)
+        if missing > 0:
+            for name, part in (("fastly", (missing + 1) // 2), ("cloudflare", missing // 2)):
+                try:
+                    if part > 0:
+                        groups.extend(candidates_for(name, part))
+                except Exception as exc:
+                    print(f"[WARN] {name} refill: {exc}")
         return groups[:limit]
 
     raise ValueError(f"Unknown source: {source}")
@@ -438,10 +464,22 @@ def is_cdn_response(source: str, headers: dict[str, str]) -> bool:
             or "fastly" in headers.get("server", "").lower()
             or "varnish" in headers.get("via", "").lower()
         )
+    if source == "cloudfront":
+        return (
+            "x-amz-cf-pop" in headers
+            or "cloudfront" in headers.get("server", "").lower()
+            or "cloudfront" in headers.get("via", "").lower()
+        )
+    if source == "google":
+        server = headers.get("server", "").lower()
+        return server.startswith(("gws", "esf", "gfe", "sffe", "gse", "ucfe", "google frontend"))
     return True
 
 
 def extract_colo(headers: dict[str, str]) -> str | None:
+    pop = headers.get("x-amz-cf-pop", "")
+    if pop[:3].isalpha() and len(pop) >= 3:
+        return pop[:3].upper()
     ray = headers.get("cf-ray", "")
     if "-" in ray:
         code = ray.rsplit("-", 1)[1].strip().upper()
@@ -473,7 +511,7 @@ def test_candidate(item: dict[str, Any]) -> dict[str, Any]:
     if source in {"custom", "vps"}:
         host = os.environ.get("TEST_HOST", "").strip() or ip
 
-    needs_cdn_proof = source in {"cloudflare", "fastly"}
+    needs_cdn_proof = source in RANGE_SOURCES
 
     samples: list[float] = []
     tls_ok = False
@@ -568,7 +606,7 @@ def build_readme_stats(results: list[dict[str, Any]], tested_by_source: dict[str
         "| منبع | آنلاین | کل تست‌شده |",
         "|---|---:|---:|",
     ]
-    for s in ("fastly", "cloudflare", "railway", "vps", "custom"):
+    for s in ("fastly", "cloudflare", "cloudfront", "google", "railway", "vps", "custom"):
         emoji, fa, _ = SOURCE_META[s]
         lines.append(f"| {emoji} {fa} | {counts.get(s, {}).get('online', 0)} | {counts.get(s, {}).get('total', 0)} |")
     lines += [
@@ -576,7 +614,7 @@ def build_readme_stats(results: list[dict[str, Any]], tested_by_source: dict[str
         f"- 🕐 آخرین اسکن: `{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`",
         f"- ⚡ سقف latency: `{MAX_LATENCY_MS} ms`",
         "- 🔐 اعتبارسنجی: TCP + TLS + HTTP",
-        "- ☁️ Cloudflare: سهم کم و فقط به‌عنوان منبع فرعی",
+        "- 🌍 منابع: Fastly · Cloudflare · CloudFront · Google (رنج‌های رسمی)",
         "<!-- AUTO_UPDATE_END -->",
     ]
     return "\n".join(lines)
@@ -601,7 +639,7 @@ def update_readme(results: list[dict[str, Any]], tested_by_source: dict[str, int
 def main() -> int:
     parser = argparse.ArgumentParser(description="Matix multi-source IP scanner")
     parser.add_argument("--source", default=os.getenv("SCAN_SOURCE", "all"),
-                        choices=["all", "cloudflare", "fastly", "railway", "vps", "custom", "trusted"])
+                        choices=["all", "cloudflare", "fastly", "cloudfront", "google", "railway", "vps", "custom", "trusted"])
     parser.add_argument("--count", type=int, default=int(os.getenv("SCAN_COUNT", "600")))
     args = parser.parse_args()
 
@@ -692,7 +730,7 @@ def main() -> int:
             "max_latency_ms": MAX_LATENCY_MS,
             "probes": PROBES,
             "validation": "TCP+TLS+HTTP+CDN-fingerprint",
-            "cloudflare_policy": "small_secondary_source",
+            "mix": DEFAULT_MIX,
         },
     }
     save_json(CLEAN_FILE, output)
