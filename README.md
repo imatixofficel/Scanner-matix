@@ -110,9 +110,24 @@ python matix.py --source fastly --count 600 --top 20 --diverse --save ips.txt --
 
 README در هر اجرا timestamp جدید می‌گیرد تا تغییر repository ثبت شود:
 
-`<!-- AUTO_UPDATE_START -->`
+`<!-- AUTO_UPDATE_START -->
+### 🤖 Matix Live Status
 
-`<!-- AUTO_UPDATE_END -->`
+| منبع | آنلاین | کل تست‌شده |
+|---|---:|---:|
+| ⚡ فستلی | 14 | 215 |
+| ☁️ کلادفلر | 36 | 184 |
+| 🟧 کلودفرانت | 17 | 210 |
+| 🔷 گوگل | 0 | 0 |
+| 🖥️ Railway | 0 | 0 |
+| 🛡️ VPS دستی | 0 | 0 |
+| ✍️ دستی | 0 | 0 |
+
+- 🕐 آخرین اسکن: `2026-10-08 11:51:05 UTC`
+- ⚡ سقف latency: `1000 ms`
+- 🔐 اعتبارسنجی: TCP + TLS + HTTP
+- 🌍 منابع: Fastly · Cloudflare · CloudFront · Google (رنج‌های رسمی)
+<!-- AUTO_UPDATE_END -->`
 
 ## custom_ips.txt
 
@@ -165,15 +180,15 @@ Scanner-matix/
 
 | منبع | آنلاین | کل تست‌شده |
 |---|---:|---:|
-| ⚡ فستلی | 0 | 0 |
-| ☁️ کلادفلر | 0 | 0 |
-| 🟧 کلودفرانت | 0 | 0 |
+| ⚡ فستلی | 14 | 215 |
+| ☁️ کلادفلر | 36 | 184 |
+| 🟧 کلودفرانت | 17 | 210 |
 | 🔷 گوگل | 0 | 0 |
 | 🖥️ Railway | 0 | 0 |
 | 🛡️ VPS دستی | 0 | 0 |
 | ✍️ دستی | 0 | 0 |
 
-- 🕐 آخرین اسکن: `not scanned yet`
+- 🕐 آخرین اسکن: `2026-10-08 11:51:05 UTC`
 - ⚡ سقف latency: `1000 ms`
 - 🔐 اعتبارسنجی: TCP + TLS + HTTP
 - 🌍 منابع: Fastly · Cloudflare · CloudFront · Google (رنج‌های رسمی)
