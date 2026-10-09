@@ -10,7 +10,7 @@ Matix Scanner یک اسکنر چندمنبعی برای پیدا کردن IPها
 
 | منبع | وضعیت |
 |---|---|
-| ⚡ Fastly | رنج رسمی (API خود Fastly) |
+| ⚡ Fastly | رنج رسمی (API خود Fastly) |1
 | ☁️ Cloudflare | رنج رسمی (API خود Cloudflare) |
 | 🟧 CloudFront (آمازون) | رنج رسمی `ip-ranges.json` با فیلتر `CLOUDFRONT` |
 | 🔷 Google | رنج رسمی `goog.json` (درصد IP سالم کمتر است، چون فقط بخشی از رنج وب‌سرور است) |
